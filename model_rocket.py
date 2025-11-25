@@ -4,7 +4,10 @@ import pandas as pd
 import json
 import time
 from sklearn.model_selection import StratifiedKFold
-from sktime.transformations.panel.rocket import MiniRocketMultivariate
+from sktime.transformations.panel.rocket import (
+    MiniRocketMultivariate,
+    MultiRocketMultivariate,
+)
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler
@@ -63,7 +66,14 @@ class PanelStandardScaler(BaseEstimator, TransformerMixin):
 
 
 def run_rocket_cv(
-    X, y, worm_ids, use_scaler=False, n_splits=5, threshold=0.5, num_kernels=1000
+    X,
+    y,
+    worm_ids,
+    use_scaler=False,
+    n_splits=5,
+    threshold=0.5,
+    num_kernels=1000,
+    variant="Mini",
 ):
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     scores, precisions, recalls, f1s = [], [], [], []
@@ -76,7 +86,17 @@ def run_rocket_cv(
         steps = []
         if use_scaler:
             steps.append(PanelStandardScaler())
-        steps.append(MiniRocketMultivariate(num_kernels=num_kernels, random_state=42))
+        if variant == "Mini":
+            rocket_model = MiniRocketMultivariate(
+                num_kernels=num_kernels, random_state=42
+            )
+            print("Using MiniRocketMultivariate")
+        elif variant == "Multi":
+            rocket_model = MultiRocketMultivariate(
+                num_kernels=num_kernels, random_state=42
+            )
+            print("Using MultiRocketMultivariate")
+        steps.append(rocket_model)
         steps.append(
             LogisticRegression(
                 solver="liblinear", class_weight="balanced", random_state=42
@@ -138,6 +158,9 @@ def main():
         default=PROCESSED_DIR,
         help="Directory with processed CSV files",
     )
+    parser.add_argument(
+        "--variant", type=str, default="Mini", help="ROCKET variant, can also be Multi"
+    )
     parser.add_argument("--n_splits", type=int, default=5, help="Number of CV folds")
     parser.add_argument(
         "--threshold", type=float, default=0.5, help="Decision threshold"
@@ -146,7 +169,7 @@ def main():
         "--use_scaler", action="store_true", help="Use PanelStandardScaler"
     )
     parser.add_argument(
-        "--num_kernels", type=int, default=1000, help="Number of MiniRocket kernels"
+        "--num_kernels", type=int, default=1000, help="Number of Rocket kernels"
     )
     args = parser.parse_args()
 
@@ -170,6 +193,7 @@ def main():
         n_splits=args.n_splits,
         threshold=args.threshold,
         num_kernels=args.num_kernels,
+        variant=args.variant,
     )
     time_end = time.time()
     print(f"Total CV time: {time_end - time_start:.2f} seconds")
