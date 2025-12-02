@@ -36,9 +36,9 @@ def plot_results(avg_results):
     model_names = list(avg_results.keys())
 
     x = np.arange(len(metrics))  # the label locations
-    width = 0.35  # the width of the bars
+    width = 0.15  # the width of the bars
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(14, 6))
 
     for i, model_name in enumerate(model_names):
         means = [avg_results[model_name][m] for m in metrics]

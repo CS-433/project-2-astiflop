@@ -140,7 +140,8 @@ if __name__ == "__main__":
         "rf": RandomForestModel,
         # "tail_mil": TailMilModel,
         "rocket": RocketModel,
-        # Add other models here
+        "xgboost": XGBoostModel,
+        "svm": SVMModel,
     }
     model_params = {
         "rf": {"rf_params": {"n_estimators": 500, "max_depth": 5, "random_state": 42}},
