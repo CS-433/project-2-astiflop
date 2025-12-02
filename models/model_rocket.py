@@ -38,13 +38,25 @@ def RocketModel(
     threshold=0.5,
     rocket_params=None,
 ):
-    rocket_params = rocket_params or {
-        "model_type": "Mini",
-        "use_scaler": False,
-        "num_kernels": 1000,
-        "random_state": 42,
-        "use_logistic_regression": True,
-    }
+    rocket_params = (
+        {
+            "model_type": rocket_params.get("model_type", "Mini"),
+            "num_kernels": rocket_params.get("num_kernels", 1000),
+            "use_scaler": rocket_params.get("use_scaler", False),
+            "use_logistic_regression": rocket_params.get(
+                "use_logistic_regression", True
+            ),
+            "random_state": rocket_params.get("random_state", 42),
+        }
+        if rocket_params
+        else {
+            "model_type": "Mini",
+            "num_kernels": 1000,
+            "use_scaler": False,
+            "use_logistic_regression": True,
+            "random_state": 42,
+        }
+    )
     steps = []
     if rocket_params["use_scaler"]:
         steps.append(PanelStandardScaler())

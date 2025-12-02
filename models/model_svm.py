@@ -15,12 +15,16 @@ def SVMModel(
     threshold=0.5,
     svm_params=None,
 ):
-    svm_params = svm_params or {
-        "C": 1.0,
-        "kernel": "linear",
-        "probability": True,
-        "random_state": 42,
-    }
+    svm_params = (
+        {
+            "C": svm_params.get("C", 1.0),
+            "kernel": svm_params.get("kernel", "rbf"),
+            "probability": True,
+            "random_state": svm_params.get("random_state", 42),
+        }
+        if svm_params
+        else {"C": 1.0, "kernel": "rbf", "probability": True, "random_state": 42}
+    )
     clf = make_pipeline(StandardScaler(), SVC(**svm_params))
     clf.fit(X_train, y_train)
     y_proba = clf.predict_proba(X_test)[:, 1]
