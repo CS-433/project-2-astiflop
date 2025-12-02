@@ -9,7 +9,14 @@ from .base import worm_level_aggregation, compute_metrics
 def LogisticRegModel(
     X_train, X_test, y_train, y_test, worm_ids, threshold=0.5, lr_params=None
 ):
-    lr_params = lr_params or {"solver": "liblinear", "random_state": 42}
+    lr_params = (
+        {
+            "solver": lr_params.get("solver", "liblinear"),
+            "random_state": lr_params.get("random_state", 42),
+        }
+        if lr_params
+        else {"solver": "liblinear", "random_state": 42}
+    )
 
     clf = make_pipeline(StandardScaler(), LogisticRegression(**lr_params))
     clf.fit(X_train, y_train)

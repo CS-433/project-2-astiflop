@@ -5,12 +5,21 @@ from .base import worm_level_aggregation, compute_metrics
 
 
 def XGBoostModel(X, y, worm_ids, n_splits=5, threshold=0.5, xgb_params=None):
-    xgb_params = xgb_params or {
-        "n_estimators": 100,
-        "use_label_encoder": False,
-        "eval_metric": "logloss",
-        "random_state": 42,
-    }
+    xgb_params = (
+        {
+            "n_estimators": xgb_params.get("n_estimators", 100),
+            "max_depth": xgb_params.get("max_depth", 3),
+            "learning_rate": xgb_params.get("learning_rate", 0.1),
+            "random_state": xgb_params.get("random_state", 42),
+        }
+        if xgb_params
+        else {
+            "n_estimators": 100,
+            "max_depth": 3,
+            "learning_rate": 0.1,
+            "random_state": 42,
+        }
+    )
     cv = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=42)
     scores, precisions, recalls, f1s = [], [], [], []
     for train_idx, test_idx in cv.split(X, y, groups=worm_ids):

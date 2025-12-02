@@ -7,9 +7,19 @@ from .base import worm_level_aggregation, compute_metrics
 def RandomForestModel(
     X_train, X_test, y_train, y_test, worm_ids, threshold=0.5, rf_params=None
 ):
-    rf_params = rf_params or {"n_estimators": 1000, "random_state": 42}
-    scores, precisions, recalls, f1s = [], [], [], []
-
+    rf_params = (
+        {
+            "n_estimators": rf_params.get("n_estimators", 100),
+            "max_depth": rf_params.get("max_depth", None),
+            "random_state": rf_params.get("random_state", 42),
+        }
+        if rf_params
+        else {
+            "n_estimators": 100,
+            "max_depth": None,
+            "random_state": 42,
+        }
+    )
     clf = RandomForestClassifier(**rf_params)
     clf.fit(X_train, y_train)
     y_proba = clf.predict_proba(X_test)[:, 1]
