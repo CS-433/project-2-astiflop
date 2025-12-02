@@ -1,1 +1,0 @@
-{"n_splits": 5, "threshold": 0.5, "use_scaler": false, "num_kernels": 1000, "average_accuracy": 0.7695238095238095, "average_precision": 0.776369992441421, "average_recall": 0.7695238095238095, "average_f1": 0.7675572951599334, "std_accuracy": 0.03375246694603687, "std_precision": 0.03596402045582734, "std_recall": 0.03375246694603687, "std_f1": 0.03383247526146488}
