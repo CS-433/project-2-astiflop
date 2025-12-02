@@ -61,6 +61,32 @@ def add_segment_column(file, frames_per_segment=900):
     df.to_csv(file, index=False)
 
 
+def add_label_column(file, label):
+    """
+    Add a 'Label' column to the CSV file with the specified label.
+
+    Args:
+        file (str): Filename to process
+        label (int): Label to add (0 for control, 1 for treated)
+    """
+    df = pd.read_csv(file)
+    df["Terbinafine"] = label
+    df.to_csv(file, index=False)
+
+
+def add_worm_id_column(file, worm_id):
+    """
+    Add a 'WormID' column to the CSV file with the specified worm ID.
+
+    Args:
+        file (str): Filename to process
+        worm_id (str): Worm ID to add
+    """
+    df = pd.read_csv(file)
+    df["WormID"] = worm_id
+    df.to_csv(file, index=False)
+
+
 def cap_speed(df, speed_cap=10):
     """
     Cap the 'Speed' values in the DataFrame to a maximum value.
@@ -184,6 +210,9 @@ def process_all_files(
     for file in preprocessed_files:
         drop_first_row(os.path.basename(file), treatment_dir)
         add_segment_column(file)
+        add_label_column(file, label=treatment == TREATED)
+        worm_id = os.path.splitext(os.path.basename(file))[0]
+        add_worm_id_column(file, worm_id)
 
     for file in preprocessed_files:
         worm_id = os.path.splitext(os.path.basename(file))[0]

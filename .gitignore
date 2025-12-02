@@ -1,3 +1,13 @@
 /.vscode/
 /preprocessed_data/
 /preprocessed_data_for_classifier/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+*.pth
+*.json

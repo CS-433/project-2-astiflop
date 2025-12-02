@@ -64,17 +64,11 @@ def process_worms_for_classifier(
     preprocessed_dir, treatment, classifier_dir, lifespan_summary
 ):
     """
-    Process all worm CSV files in the preprocessed directory to create a segments-level DataFrame
-    suitable for classifier training. The resulting DataFrame is saved as a CSV file.
-
-    Args:
-        preprocessed_dir (str): Directory containing preprocessed worm CSV files.
-        treatment (str): Treatment group name.
-        classifier_dir (str): Directory to save the classifier-ready CSV file.
-        lifespan_summary (pd.DataFrame): DataFrame containing lifespan summary with worm IDs and labels.
+    Pour chaque worm, sauvegarde ses segments dans un fichier individuel dans le dossier du traitement.
     """
-    all_segments_df = []
     treatment_dir = os.path.join(preprocessed_dir, treatment)
+    output_dir = os.path.join(classifier_dir, treatment)
+    os.makedirs(output_dir, exist_ok=True)
     for file_name in os.listdir(treatment_dir):
         if file_name.endswith(".csv"):
             worm_id = file_name[:-4]
@@ -84,14 +78,9 @@ def process_worms_for_classifier(
                 label = label_row["Terbinafine"].values[0]
                 segments_df = convert_wormdf_to_segmentsdf(worm_df, label)
                 segments_df["Worm_ID"] = worm_id
-                all_segments_df.append(segments_df)
-
-    if all_segments_df:
-        final_df = pd.concat(all_segments_df, ignore_index=True)
-        os.makedirs(classifier_dir, exist_ok=True)
-        final_df.to_csv(
-            os.path.join(classifier_dir, f"{treatment}_segments_data.csv"), index=False
-        )
+                segments_df.to_csv(
+                    os.path.join(output_dir, f"{worm_id}_segments.csv"), index=False
+                )
 
 
 if __name__ == "__main__":
