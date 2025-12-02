@@ -41,7 +41,7 @@ def RocketModel(
     rocket_params = rocket_params or {
         "model_type": "Mini",
         "use_scaler": False,
-        "num_kernels": 100,
+        "num_kernels": 1000,
         "random_state": 42,
         "use_logistic_regression": True,
     }
