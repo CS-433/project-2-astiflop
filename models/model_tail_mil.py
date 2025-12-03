@@ -8,11 +8,10 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
+from tqdm import tqdm
 
 
 class FeatureExtractor(nn.Module):
@@ -185,7 +184,8 @@ def TailMilModel(
 
     for epoch in range(epochs):
         model.train()
-        for X, y in train_loader:
+        train_loss = 0.0
+        for X, y in tqdm(train_loader, desc=f"TAIL-MIL: Epoch {epoch+1}/{epochs}"):
             X, y = X.to(device), y.to(device).float()
             preds, _, _ = model(X)
             preds = preds.squeeze()
@@ -193,7 +193,8 @@ def TailMilModel(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
+            train_loss += loss.item()
+        avg_train_loss = train_loss / len(train_loader)
         # Validation
         model.eval()
         val_labels = []
@@ -216,6 +217,7 @@ def TailMilModel(
         except:
             val_auc = 0.5
 
+
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_val_f1 = val_f1
@@ -226,6 +228,11 @@ def TailMilModel(
             torch.save(model.state_dict(), "tail_mil_worm_best.pth")
         else:
             epochs_no_improve += 1
+        
+        # Summary of epoch:
+        tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}. Patience: {epochs_no_improve}/{patience}")
+        
+        # Early stopping
         if epochs_no_improve >= patience:
             break
 
