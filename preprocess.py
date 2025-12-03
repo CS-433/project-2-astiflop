@@ -87,6 +87,59 @@ def add_worm_id_column(file, worm_id):
     df.to_csv(file, index=False)
 
 
+def add_turning_rate_column_within_segments(
+    df: pd.DataFrame, speed_threshold: float = 0.05
+) -> pd.DataFrame:
+    """
+    Calculates the 'Turning_rate' (Delta Theta) for each time step within the
+    trajectories and applies a speed filter to remove angular noise when the worm is stopped.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing worm tracking data with 'X', 'Y', 'Speed', and 'Segment' columns.
+        speed_threshold (float): Minimum speed required for an angular change to be considered valid (e.g., 0.05).
+
+    Returns:
+        pd.DataFrame: DataFrame with the 'Turning_rate' column added.
+    """
+    df = df.copy()
+
+    # --- 1. Calculate absolute heading (Theta) ---
+    # Calculate differences in x and y coordinates (Displacement vectors)
+    df["dx"] = df["X"].diff()
+    df["dy"] = df["Y"].diff()
+
+    # Calculate the absolute angle (heading) using atan2 to handle all quadrants
+    df["theta"] = np.arctan2(df["dy"], df["dx"])
+
+    # --- 2. Calculate the change in angle (Delta Theta) ---
+    # Delta theta is the difference between consecutive headings
+    df["delta_theta"] = df["theta"].diff()
+
+    # 3. Adjust delta_theta to be within [-pi, pi] (Handling the circular nature of angles)
+    # This prevents turns from 359 to 1 degree from being calculated as -358 degrees.
+    df["delta_theta"] = (df["delta_theta"] + np.pi) % (2 * np.pi) - np.pi
+
+    # --- 4. Apply Speed Threshold Mask (Noise Cleaning) ---
+
+    # Identify time steps where the speed is below the established noise floor
+    mask_stopped = df["Speed"] <= speed_threshold
+
+    # Set the angular change to 0.0 for those stopped instances
+    # This removes spurious delta_theta values caused by sensor/camera noise when the worm is immobile.
+    df.loc[mask_stopped, "delta_theta"] = 0.0
+
+    # 5. Handle initial NaNs
+    # The first 2 rows of any segment will have NaNs due to the two consecutive diff() operations.
+    # We replace them with 0.0, assuming no significant turn at the very start of the tracking.
+    df["Turning_rate"] = df["delta_theta"].fillna(0.0)
+
+    # --- 6. Cleanup and Return ---
+    # Drop intermediate columns for a cleaner output
+    df = df.drop(columns=["dx", "dy", "theta", "delta_theta"])
+
+    return df
+
+
 def cap_speed(df, speed_cap=10):
     """
     Cap the 'Speed' values in the DataFrame to a maximum value.
@@ -110,8 +163,11 @@ def drop_frames_after_death(df, frame_of_death):
     return df[df["GlobalFrame"] <= frame_of_death]
 
 
-def clean_segment_gaps(segment_df, gap_interpolation_limit=10, long_gap_threshold=11):
-    """Repair short gaps by interpolation and remove long gaps.
+def clean_segment_gaps(
+    segment_df, gap_interpolation_limit=10, long_gap_threshold=11, drop_na=False
+):
+    """Repair short gaps by interpolation and assume long gaps indicate the worm is not moving, so we remplace them with 0 speed and
+    We drop them if drop_na is True.
 
     Args:
         segment_df: DataFrame of a single segment containing columns `x`, `y`,
@@ -175,6 +231,7 @@ def preprocess_file(file, frame_of_death, speed_cap=10, normalize_coords=False):
     cleaned_segments = []
     for segment_id, segment_df in df.groupby("Segment"):
         segment_df = clean_segment_gaps(segment_df)
+        segment_df = add_turning_rate_column_within_segments(segment_df)
         cleaned_segments.append(segment_df)
 
     cleaned_df = pd.concat(cleaned_segments).reset_index(drop=True)
