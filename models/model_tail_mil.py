@@ -50,7 +50,7 @@ class GatedAttention(nn.Module):
         self.attention_U = nn.Sequential(nn.Linear(dim, hidden_dim), nn.Sigmoid())
         self.attention_weights = nn.Linear(hidden_dim, 1)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         # x: (Batch, Num_Instances, Dim)
         # V-Attention: learn non-linearity
         # U-Attention: learn gating (like LSTM gate)
@@ -59,6 +59,13 @@ class GatedAttention(nn.Module):
 
         # Element-wise multiplication (Conjunctive-like mechanism)
         A = self.attention_weights(A_V * A_U)  # (Batch, Num_Instances, 1)
+
+        if mask is not None:
+            # mask shape: (Batch, Num_Instances)
+            # We want to mask out the padded instances (where mask is False/0)
+            # A shape: (Batch, Num_Instances, 1)
+            mask = mask.unsqueeze(-1)  # (Batch, Num_Instances, 1)
+            A = A.masked_fill(mask == 0, -1e9)
 
         # Softmax over instances to get probability distribution
         weights = F.softmax(A, dim=1)
@@ -125,7 +132,12 @@ class TAIL_MIL(nn.Module):
         segment_embeddings = segment_embeddings + self.pos_encoder[:, :T, :]
 
         # --- Step 4: T-Attention (Aggregation over Time) ---
-        t_weights = self.t_attention(segment_embeddings)  # (B, T, 1)
+        # Create mask for padding. Assuming padding is all zeros.
+        # x shape: (B, T, V, L). We check if a segment (T) has any non-zero value.
+        # Sum absolute values over V and L dimensions.
+        mask = (x.view(B, T, -1).abs().sum(dim=-1) > 1e-6).float()  # (B, T)
+
+        t_weights = self.t_attention(segment_embeddings, mask=mask)  # (B, T, 1)
         bag_embedding = torch.sum(segment_embeddings * t_weights, dim=1)  # (B, Emb_Dim)
 
         # --- Step 5: Classification ---
