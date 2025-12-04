@@ -152,6 +152,93 @@ def cap_speed(df, speed_cap=10):
     return df
 
 
+def remove_high_speed_outliers(df, speed_threshold=4):
+    """
+    Remove rows with speed above the threshold and adjust subsequent coordinates
+    to stitch the trajectory, effectively removing the jump.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing worm tracking data.
+        speed_threshold (float): Speed threshold for outlier detection.
+
+    Returns:
+        pd.DataFrame: DataFrame with outliers removed and coordinates adjusted.
+    """
+    df = df.copy()
+
+    # Identify outliers
+    outlier_mask = (df["Speed"] > speed_threshold) | df["Speed"].isna()
+
+    if not outlier_mask.any():
+        return df
+
+    # Calculate displacements (jumps)
+    dx = df["X"].diff().fillna(0)
+    dy = df["Y"].diff().fillna(0)
+
+    # Identify shifts caused by outliers
+    shifts_x = dx.where(outlier_mask, 0)
+    shifts_y = dy.where(outlier_mask, 0)
+
+    # Calculate cumulative shift
+    cum_shift_x = shifts_x.cumsum()
+    cum_shift_y = shifts_y.cumsum()
+
+    # Apply adjustment
+    df["X"] -= cum_shift_x
+    df["Y"] -= cum_shift_y
+
+    # Drop the outlier rows
+    df = df[~outlier_mask].reset_index(drop=True)
+
+    return df
+
+
+def remove_large_displacement_outliers(df, distance_threshold=2):
+    """
+    Remove rows where the displacement (distance) from the previous frame exceeds the threshold,
+    and adjust subsequent coordinates to stitch the trajectory.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing worm tracking data.
+        distance_threshold (float): Distance threshold for outlier detection.
+
+    Returns:
+        pd.DataFrame: DataFrame with outliers removed and coordinates adjusted.
+    """
+    df = df.copy()
+
+    # Calculate displacements (jumps)
+    dx = df["X"].diff().fillna(0)
+    dy = df["Y"].diff().fillna(0)
+
+    # Calculate Euclidean distance
+    distances = np.sqrt(dx**2 + dy**2)
+
+    # Identify outliers
+    outlier_mask = distances > distance_threshold
+
+    if not outlier_mask.any():
+        return df
+
+    # Identify shifts caused by outliers
+    shifts_x = dx.where(outlier_mask, 0)
+    shifts_y = dy.where(outlier_mask, 0)
+
+    # Calculate cumulative shift
+    cum_shift_x = shifts_x.cumsum()
+    cum_shift_y = shifts_y.cumsum()
+
+    # Apply adjustment
+    df["X"] -= cum_shift_x
+    df["Y"] -= cum_shift_y
+
+    # Drop the outlier rows
+    df = df[~outlier_mask].reset_index(drop=True)
+
+    return df
+
+
 def drop_frames_after_death(df, frame_of_death):
     """
     Drop all frames after the frame of death.
@@ -215,7 +302,88 @@ def normalize_coordinates(df):
     return df
 
 
-def preprocess_file(file, frame_of_death, speed_cap=10, normalize_coords=False):
+def filter_and_transform_to_displacement(df, threshold=2):
+    """
+    1. Drop rows with NaN in X or Y.
+    2. Replace X and Y with their displacement from the previous row.
+    3. Add a 'Displacement' column with the Euclidean distance.
+    4. Drop rows where 'Displacement' exceeds the threshold.
+
+    Args:
+        df (pd.DataFrame): Input dataframe.
+        threshold (float): Displacement threshold.
+
+    Returns:
+        pd.DataFrame: Transformed and filtered dataframe.
+    """
+    # 1. Drop NA for X or Y
+    df = df.dropna(subset=["X", "Y"]).copy()
+
+    # Calculate displacements
+    dx = df["X"].diff()
+    dy = df["Y"].diff()
+
+    # 3. Displacement column
+    df["Displacement"] = np.sqrt(dx**2 + dy**2)
+
+    # 2. Puts the displacement on X, Y
+    df["X"] = dx
+    df["Y"] = dy
+
+    # 4. Drop rows with displacement above threshold
+    # We also drop the first row because diff() produces NaN
+    df = df.dropna(subset=["Displacement"])
+    df = df[df["Displacement"] <= threshold]
+
+    return df
+
+
+def filter_and_reconstruct_coordinates(df, threshold=2):
+    """
+    1. Drop rows with NaN in X or Y.
+    2. Calculate displacement from the previous row.
+    3. Drop rows where displacement exceeds the threshold.
+    4. Reconstruct X and Y by cumulatively summing the valid displacements.
+
+    Args:
+        df (pd.DataFrame): Input dataframe.
+        threshold (float): Displacement threshold.
+
+    Returns:
+        pd.DataFrame: Transformed and filtered dataframe.
+    """
+    # 1. Drop NA for X or Y
+    df = df.dropna(subset=["X", "Y"]).copy()
+    
+    if df.empty:
+        return df
+
+    # Store start coordinates
+    start_x = df.iloc[0]["X"]
+    start_y = df.iloc[0]["Y"]
+
+    # Calculate displacements
+    # fillna(0) ensures the first row (displacement 0) is kept
+    df["dx"] = df["X"].diff().fillna(0)
+    df["dy"] = df["Y"].diff().fillna(0)
+
+    # 3. Displacement column
+    df["Displacement"] = np.sqrt(df["dx"]**2 + df["dy"]**2)
+
+    # 4. Drop rows with displacement above threshold
+    df = df[df["Displacement"] <= threshold]
+
+    # 5. Reconstruct coordinates
+    df["X"] = df["dx"].cumsum() + start_x
+    df["Y"] = df["dy"].cumsum() + start_y
+    
+    # Drop intermediate columns
+    df = df.drop(columns=["dx", "dy", "Displacement"])
+
+    return df
+
+
+def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False):
     """
     Preprocess a single CSV file by applying various cleaning steps.
 
@@ -227,7 +395,7 @@ def preprocess_file(file, frame_of_death, speed_cap=10, normalize_coords=False):
     """
     df = pd.read_csv(file)
     df = drop_frames_after_death(df, frame_of_death)
-    df = cap_speed(df, speed_cap)
+    df = filter_and_reconstruct_coordinates(df) # change for other versions (e.g. cap high speed)
     cleaned_segments = []
     for segment_id, segment_df in df.groupby("Segment"):
         segment_df = clean_segment_gaps(segment_df)
@@ -243,7 +411,7 @@ def preprocess_file(file, frame_of_death, speed_cap=10, normalize_coords=False):
 
 
 def process_all_files(
-    treatment, lifespan_summary, speed_cap=10, normalize_coords=False
+    treatment, lifespan_summary, speed_cap=4, normalize_coords=False, specific_file=None
 ):
     """
     Preprocess all CSV files in the specified treatment group.
@@ -253,16 +421,26 @@ def process_all_files(
         lifespan_summary (pd.DataFrame): DataFrame containing lifespan summary
         speed_cap (float): Maximum speed value
         normalize_coords (bool): Whether to normalize coordinates
+        specific_file (str): Optional specific file to process (basename)
     """
     treatment_dir = os.path.join(PREPROCESSED_DIR, treatment)
     os.makedirs(treatment_dir, exist_ok=True)
 
-    files = glob(os.path.join("data", treatment, "*.csv"))
+    if specific_file:
+        # Check if the file exists in this treatment folder
+        full_path = os.path.join("data", treatment, specific_file)
+        if os.path.exists(full_path):
+            files = [full_path]
+        else:
+            files = []
+    else:
+        files = glob(os.path.join("data", treatment, "*.csv"))
 
+    preprocessed_files = []
     for file in files:
-        rename_file(os.path.basename(file), treatment, treatment_dir)
-
-    preprocessed_files = glob(os.path.join(treatment_dir, "*.csv"))
+        new_path = rename_file(os.path.basename(file), treatment, treatment_dir)
+        if new_path:
+            preprocessed_files.append(new_path)
 
     for file in preprocessed_files:
         drop_first_row(os.path.basename(file), treatment_dir)
@@ -272,6 +450,7 @@ def process_all_files(
         add_worm_id_column(file, worm_id)
 
     for file in preprocessed_files:
+        print(f"Processing {os.path.basename(file)}...")
         worm_id = os.path.splitext(os.path.basename(file))[0]
         frame_of_death = lifespan_summary.loc[
             lifespan_summary["Filename"] == "/" + worm_id, "LifespanInFrames"
@@ -289,8 +468,8 @@ def parse_args():
     parser.add_argument(
         "--speed-cap",
         type=float,
-        default=10,
-        help="Maximum speed value to cap at (default: 10).",
+        default=4,
+        help="Maximum speed value to cap at (default: 4).",
     )
     parser.add_argument(
         "--normalize",
@@ -302,6 +481,11 @@ def parse_args():
         dest="normalize",
         action="store_false",
         help="Do not normalize coordinates.",
+    )
+    parser.add_argument(
+        "--file",
+        type=str,
+        help="Specific file to process (basename).",
     )
     parser.set_defaults(normalize=False)
 
@@ -318,6 +502,7 @@ if __name__ == "__main__":
         lifespan_summary,
         speed_cap=args.speed_cap,
         normalize_coords=args.normalize,
+        specific_file=args.file,
     )
 
     process_all_files(
@@ -325,5 +510,6 @@ if __name__ == "__main__":
         lifespan_summary,
         speed_cap=args.speed_cap,
         normalize_coords=args.normalize,
+        specific_file=args.file,
     )
     print("Preprocessing completed.")
