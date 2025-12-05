@@ -403,7 +403,7 @@ def normalize_coordinates(df):
     df["Y"] = (df["Y"] - df["Y"].min()) / (df["Y"].max() - df["Y"].min())
     return df
 
-def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, distance_threshold=10):
+def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, distance_threshold=16):
     """
     Preprocess a single CSV file by applying various cleaning steps.
 
@@ -439,7 +439,7 @@ def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, d
 
 
 def process_all_files(
-    treatment, lifespan_summary, output_dir="preprocessed_data/", speed_cap=4, normalize_coords=False, specific_file=None, distance_threshold=10
+    treatment, lifespan_summary, output_dir="preprocessed_data/", speed_cap=4, normalize_coords=False, specific_file=None, distance_threshold=16
 ):
     """
     Preprocess all CSV files in the specified treatment group.
@@ -505,8 +505,8 @@ def parse_args():
     parser.add_argument(
         "--distance-threshold",
         type=float,
-        default=10,
-        help="Distance threshold for coordinate reconstruction (default: 10).",
+        default=16,
+        help="Distance threshold for coordinate reconstruction (default: 16).",
     )
     parser.add_argument(
         "--output-dir",
