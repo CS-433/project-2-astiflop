@@ -6,8 +6,6 @@ from glob import glob
 
 CONTROL = "TERBINAFINE- (control)"
 TREATED = "TERBINAFINE+"
-PREPROCESSED_DIR = "preprocessed_data/"
-
 
 def rename_file(file_name, treatment, treatment_dir):
     """
@@ -24,7 +22,10 @@ def rename_file(file_name, treatment, treatment_dir):
             parts[3] = "0" + str(parts[3])
         worm_id = f"{parts[2]}_piworm{parts[3]}_{parts[4]}"
         df = pd.read_csv(os.path.join("data", treatment, file_name))
-        df.to_csv(os.path.join(treatment_dir, f"{worm_id}.csv"), index=False)
+        new_path = os.path.join(treatment_dir, f"{worm_id}.csv")
+        df.to_csv(new_path, index=False)
+        return new_path
+    return None
 
 
 def drop_first_row(file_name, treatment_dir):
@@ -238,6 +239,107 @@ def remove_large_displacement_outliers(df, distance_threshold=2):
 
     return df
 
+def filter_and_transform_to_displacement(df, distance_threshold=2):
+    """
+    1. Drop rows with NaN in X or Y.
+    2. Replace X and Y with their displacement from the previous row.
+    3. Add a 'Displacement' column with the Euclidean distance.
+    4. Drop rows where 'Displacement' exceeds the threshold.
+
+    Args:
+        df (pd.DataFrame): Input dataframe.
+        distance_threshold (float): Displacement threshold.
+
+    Returns:
+        pd.DataFrame: Transformed and filtered dataframe.
+    """
+    # 1. Drop NA for X or Y
+    df = df.dropna(subset=["X", "Y"]).copy()
+
+    # Calculate displacements
+    dx = df["X"].diff()
+    dy = df["Y"].diff()
+
+    # 3. Displacement column
+    df["Displacement"] = np.sqrt(dx**2 + dy**2)
+
+    # 2. Puts the displacement on X, Y
+    df["X"] = dx
+    df["Y"] = dy
+
+    # 4. Drop rows with displacement above threshold
+    # We also drop the first row because diff() produces NaN
+    df = df.dropna(subset=["Displacement"])
+    df = df[df["Displacement"] <= distance_threshold]
+
+    return df
+
+
+def filter_and_reconstruct_coordinates(df, distance_threshold=2):
+    """
+    1. Drop rows with NaN in X or Y.
+    2. Calculate displacement from the previous row.
+    3. Drop rows where displacement exceeds the threshold.
+    4. Reconstruct X and Y by cumulatively summing the valid displacements.
+
+    Args:
+        df (pd.DataFrame): Input dataframe.
+        distance_threshold (float): Displacement threshold.
+
+    Returns:
+        pd.DataFrame: Transformed and filtered dataframe.
+    """
+    # 1. Drop NA for X or Y
+    df = df.dropna(subset=["X", "Y"]).copy()
+    
+    if df.empty:
+        return df
+
+    # Store start coordinates
+    start_x = df.iloc[0]["X"]
+    start_y = df.iloc[0]["Y"]
+
+    # Calculate displacements
+    # fillna(0) ensures the first row (displacement 0) is kept
+    df["dx"] = df["X"].diff().fillna(0)
+    df["dy"] = df["Y"].diff().fillna(0)
+
+    # 3. Displacement column
+    df["Displacement"] = np.sqrt(df["dx"]**2 + df["dy"]**2)
+
+    # 4. Drop rows with displacement above threshold
+    df = df[df["Displacement"] <= distance_threshold]
+
+    # 5. Reconstruct coordinates
+    df["X"] = df["dx"].cumsum() + start_x
+    df["Y"] = df["dy"].cumsum() + start_y
+    
+    # Drop intermediate columns
+    df = df.drop(columns=["dx", "dy", "Displacement"])
+
+    return df
+
+
+def filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=2):
+    """
+    Applies filter_and_reconstruct_coordinates to each segment individually.
+
+    Args:
+        df (pd.DataFrame): Input dataframe.
+        distance_threshold (float): Displacement threshold.
+
+    Returns:
+        pd.DataFrame: Transformed and filtered dataframe.
+    """
+    cleaned_segments = []
+    for _, segment_df in df.groupby("Segment"):
+        cleaned_segments.append(filter_and_reconstruct_coordinates(segment_df, distance_threshold))
+
+    if not cleaned_segments:
+        return df
+
+    return pd.concat(cleaned_segments).reset_index(drop=True)
+
 
 def drop_frames_after_death(df, frame_of_death):
     """
@@ -301,89 +403,7 @@ def normalize_coordinates(df):
     df["Y"] = (df["Y"] - df["Y"].min()) / (df["Y"].max() - df["Y"].min())
     return df
 
-
-def filter_and_transform_to_displacement(df, threshold=2):
-    """
-    1. Drop rows with NaN in X or Y.
-    2. Replace X and Y with their displacement from the previous row.
-    3. Add a 'Displacement' column with the Euclidean distance.
-    4. Drop rows where 'Displacement' exceeds the threshold.
-
-    Args:
-        df (pd.DataFrame): Input dataframe.
-        threshold (float): Displacement threshold.
-
-    Returns:
-        pd.DataFrame: Transformed and filtered dataframe.
-    """
-    # 1. Drop NA for X or Y
-    df = df.dropna(subset=["X", "Y"]).copy()
-
-    # Calculate displacements
-    dx = df["X"].diff()
-    dy = df["Y"].diff()
-
-    # 3. Displacement column
-    df["Displacement"] = np.sqrt(dx**2 + dy**2)
-
-    # 2. Puts the displacement on X, Y
-    df["X"] = dx
-    df["Y"] = dy
-
-    # 4. Drop rows with displacement above threshold
-    # We also drop the first row because diff() produces NaN
-    df = df.dropna(subset=["Displacement"])
-    df = df[df["Displacement"] <= threshold]
-
-    return df
-
-
-def filter_and_reconstruct_coordinates(df, threshold=2):
-    """
-    1. Drop rows with NaN in X or Y.
-    2. Calculate displacement from the previous row.
-    3. Drop rows where displacement exceeds the threshold.
-    4. Reconstruct X and Y by cumulatively summing the valid displacements.
-
-    Args:
-        df (pd.DataFrame): Input dataframe.
-        threshold (float): Displacement threshold.
-
-    Returns:
-        pd.DataFrame: Transformed and filtered dataframe.
-    """
-    # 1. Drop NA for X or Y
-    df = df.dropna(subset=["X", "Y"]).copy()
-    
-    if df.empty:
-        return df
-
-    # Store start coordinates
-    start_x = df.iloc[0]["X"]
-    start_y = df.iloc[0]["Y"]
-
-    # Calculate displacements
-    # fillna(0) ensures the first row (displacement 0) is kept
-    df["dx"] = df["X"].diff().fillna(0)
-    df["dy"] = df["Y"].diff().fillna(0)
-
-    # 3. Displacement column
-    df["Displacement"] = np.sqrt(df["dx"]**2 + df["dy"]**2)
-
-    # 4. Drop rows with displacement above threshold
-    df = df[df["Displacement"] <= threshold]
-
-    # 5. Reconstruct coordinates
-    df["X"] = df["dx"].cumsum() + start_x
-    df["Y"] = df["dy"].cumsum() + start_y
-    
-    # Drop intermediate columns
-    df = df.drop(columns=["dx", "dy", "Displacement"])
-
-    return df
-
-
-def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False):
+def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, distance_threshold=10):
     """
     Preprocess a single CSV file by applying various cleaning steps.
 
@@ -392,13 +412,21 @@ def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False):
         frame_of_death (int): Frame number indicating death
         speed_cap (float): Maximum speed value
         normalize_coords (bool): Whether to normalize coordinates
+        distance_threshold (float): Distance threshold for coordinate reconstruction
     """
     df = pd.read_csv(file)
     df = drop_frames_after_death(df, frame_of_death)
-    df = filter_and_reconstruct_coordinates(df) # change for other versions (e.g. cap high speed)
+    # df = cap_speed(df, speed_cap=speed_cap) # original preprocessing
+    # df = remove_high_speed_outliers(df) # preprocessing 2 
+    # df = remove_large_displacement_outliers(df, distance_threshold=2) # preprocessing 3
+    # df = filter_and_transform_to_displacement(df, distance_threshold=2) # preprocessing 4
+    # df = filter_and_reconstruct_coordinates(df, distance_threshold=2) # preprocessing 5
+    # df = filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=2) # preprocessing 6
+    # df = filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=20) # preprocessing 7
+    df = filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=distance_threshold) # final preprocessing
     cleaned_segments = []
     for segment_id, segment_df in df.groupby("Segment"):
-        segment_df = clean_segment_gaps(segment_df)
+        # segment_df = clean_segment_gaps(segment_df) # known useless for preprocessing 6+
         segment_df = add_turning_rate_column_within_segments(segment_df)
         cleaned_segments.append(segment_df)
 
@@ -411,7 +439,7 @@ def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False):
 
 
 def process_all_files(
-    treatment, lifespan_summary, speed_cap=4, normalize_coords=False, specific_file=None
+    treatment, lifespan_summary, output_dir="preprocessed_data/", speed_cap=4, normalize_coords=False, specific_file=None, distance_threshold=10
 ):
     """
     Preprocess all CSV files in the specified treatment group.
@@ -419,11 +447,13 @@ def process_all_files(
     Args:
         treatment (str): Treatment group
         lifespan_summary (pd.DataFrame): DataFrame containing lifespan summary
+        output_dir (str): Directory to save preprocessed files
         speed_cap (float): Maximum speed value
         normalize_coords (bool): Whether to normalize coordinates
         specific_file (str): Optional specific file to process (basename)
+        distance_threshold (float): Distance threshold for coordinate reconstruction
     """
-    treatment_dir = os.path.join(PREPROCESSED_DIR, treatment)
+    treatment_dir = os.path.join(output_dir, treatment)
     os.makedirs(treatment_dir, exist_ok=True)
 
     if specific_file:
@@ -460,6 +490,7 @@ def process_all_files(
             frame_of_death,
             speed_cap=speed_cap,
             normalize_coords=normalize_coords,
+            distance_threshold=distance_threshold,
         )
 
 
@@ -470,6 +501,18 @@ def parse_args():
         type=float,
         default=4,
         help="Maximum speed value to cap at (default: 4).",
+    )
+    parser.add_argument(
+        "--distance-threshold",
+        type=float,
+        default=10,
+        help="Distance threshold for coordinate reconstruction (default: 10).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="preprocessed_data/",
+        help="Directory to save preprocessed files (default: preprocessed_data/).",
     )
     parser.add_argument(
         "--normalize",
@@ -500,16 +543,20 @@ if __name__ == "__main__":
     process_all_files(
         CONTROL,
         lifespan_summary,
+        output_dir=args.output_dir,
         speed_cap=args.speed_cap,
         normalize_coords=args.normalize,
         specific_file=args.file,
+        distance_threshold=args.distance_threshold,
     )
 
     process_all_files(
         TREATED,
         lifespan_summary,
+        output_dir=args.output_dir,
         speed_cap=args.speed_cap,
         normalize_coords=args.normalize,
         specific_file=args.file,
+        distance_threshold=args.distance_threshold,
     )
     print("Preprocessing completed.")
