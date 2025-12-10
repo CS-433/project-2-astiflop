@@ -108,14 +108,21 @@ class TAIL_MIL(nn.Module):
         """
         B, T, V, L = x.shape
 
+        if torch.isnan(x).any():
+            print("NaN detected in the input")
+            exit(0)
+
         # --- Step 1: Feature Extraction ---
         x_flat = x.view(B * T * V, 1, L)
         embeddings = self.feature_extractor(x_flat)  # (B*T*V, Emb_Dim)
         embeddings = embeddings.view(B, T, V, self.embed_dim)  # (B, T, V, Emb_Dim)
 
+        # Check for NaN values in embeddings
+        if torch.isnan(embeddings).any():
+            print("NaN detected in embeddings")
+            exit(0)
+
         # --- Step 2: V-Attention (Aggregation over Variables) ---
-        # We want to aggregate the 3 vars into 1 segment representation
-        # Flatten Batch and Time to treat them as independent "groups" for now
         curr_embeddings = embeddings.view(B * T, V, self.embed_dim)
         v_weights = self.v_attention(curr_embeddings)  # (B*T, V, 1)
         segment_embeddings = torch.sum(
@@ -125,19 +132,24 @@ class TAIL_MIL(nn.Module):
             B, T, self.embed_dim
         )  # (B, T, Emb_Dim)
 
+        # Check for NaN values in segment_embeddings
+        if torch.isnan(segment_embeddings).any():
+            print("NaN detected in segment_embeddings")
+            exit(0)
+
         # --- Step 3: Time-Awareness ---
-        # Add positional encoding to capture sequence order
-        # Slice pos_encoder to matching time length T
         segment_embeddings = segment_embeddings + self.pos_encoder[:, :T, :]
 
         # --- Step 4: T-Attention (Aggregation over Time) ---
-        # Create mask for padding. Assuming padding is all zeros.
-        # x shape: (B, T, V, L). We check if a segment (T) has any non-zero value.
-        # Sum absolute values over V and L dimensions.
         mask = (x.view(B, T, -1).abs().sum(dim=-1) > 1e-6).float()  # (B, T)
 
         t_weights = self.t_attention(segment_embeddings, mask=mask)  # (B, T, 1)
         bag_embedding = torch.sum(segment_embeddings * t_weights, dim=1)  # (B, Emb_Dim)
+
+        # Check for NaN values in bag_embedding
+        if torch.isnan(bag_embedding).any():
+            print("NaN detected in bag_embedding")
+            exit(0)
 
         # --- Step 5: Classification ---
         y_prob = self.classifier(bag_embedding)
