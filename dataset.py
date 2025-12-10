@@ -113,7 +113,7 @@ class UnifiedCElegansDataset(Dataset):
         df = pd.read_csv(file_path)
         feature_cols = FEATURES_PYTORCH
 
-        data_tensor = torch.zeros(self.max_segments, 3, self.segment_len)
+        data_tensor = torch.zeros(self.max_segments, len(feature_cols), self.segment_len)
 
         if not df.empty:
             if "Segment" in df.columns:
@@ -130,6 +130,16 @@ class UnifiedCElegansDataset(Dataset):
             else:
                 pass
 
+        if torch.isnan(data_tensor).any():
+            print(f"NaN detected in data tensor for file: {file_path}")
+            # detailed debug info
+            print(f"Data tensor shape: {data_tensor.shape}"
+                  f"\nData tensor contents:\n{data_tensor}")
+            print(f"Nan locations (column, row):")
+            nan_indices = torch.isnan(data_tensor).nonzero(as_tuple=False)
+            print(nan_indices)
+            exit(0)
+            
         return data_tensor, torch.tensor(label, dtype=torch.long)
 
     def get_data_for_rocket(self, feature_cols=FEATURES_ROCKET):
