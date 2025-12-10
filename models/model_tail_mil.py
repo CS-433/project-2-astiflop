@@ -73,9 +73,8 @@ class GatedAttention(nn.Module):
 
 
 class TAIL_MIL(nn.Module):
-    def __init__(self, segment_len, num_vars=3, embed_dim=512):
+    def __init__(self, segment_len, embed_dim=512):
         super().__init__()
-        self.num_vars = num_vars
         self.embed_dim = embed_dim
 
         # 1. Feature Extractor (Shared across all variables and segments)
@@ -172,7 +171,7 @@ def TailMilModel(
     epochs=100,
     patience=10,
     threshold=0.5,
-    device="cpu",
+    device="cuda" if torch.cuda.is_available() else "cpu",
 ):
     train_loader = DataLoader(
         Subset(dataset, train_indices), batch_size=batch_size, shuffle=True
@@ -182,7 +181,7 @@ def TailMilModel(
     )
 
     model = TAIL_MIL(
-        segment_len=dataset.segment_len, num_vars=3, embed_dim=embed_dim
+        segment_len=dataset.segment_len, embed_dim=embed_dim
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.BCELoss()
@@ -194,10 +193,10 @@ def TailMilModel(
     best_val_rec = 0
     epochs_no_improve = 0
 
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs), desc="Training TAIL-MIL"):
         model.train()
         train_loss = 0.0
-        for X, y in tqdm(train_loader, desc=f"TAIL-MIL: Epoch {epoch+1}/{epochs}"):
+        for X, y in train_loader:
             X, y = X.to(device), y.to(device).float()
             preds, _, _ = model(X)
             preds = preds.squeeze()
@@ -242,7 +241,7 @@ def TailMilModel(
             epochs_no_improve += 1
         
         # Summary of epoch:
-        tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}. Patience: {epochs_no_improve}/{patience}")
+        tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}. Patience: {epochs_no_improve}/{patience} {"<- Best" if epochs_no_improve==0 else ""}")
         
         # Early stopping
         if epochs_no_improve >= patience:
