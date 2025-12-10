@@ -4,6 +4,8 @@ import os
 import argparse
 from glob import glob
 
+import tqdm
+
 CONTROL = "TERBINAFINE- (control)"
 TREATED = "TERBINAFINE+"
 
@@ -467,20 +469,19 @@ def process_all_files(
         files = glob(os.path.join("data", treatment, "*.csv"))
 
     preprocessed_files = []
-    for file in files:
+    for file in tqdm.tqdm(files):
         new_path = rename_file(os.path.basename(file), treatment, treatment_dir)
         if new_path:
             preprocessed_files.append(new_path)
 
-    for file in preprocessed_files:
+    for file in tqdm.tqdm(preprocessed_files):
         drop_first_row(os.path.basename(file), treatment_dir)
         add_segment_column(file)
         add_label_column(file, label=treatment == TREATED)
         worm_id = os.path.splitext(os.path.basename(file))[0]
         add_worm_id_column(file, worm_id)
 
-    for file in preprocessed_files:
-        print(f"Processing {os.path.basename(file)}...")
+    for file in tqdm.tqdm(preprocessed_files):
         worm_id = os.path.splitext(os.path.basename(file))[0]
         frame_of_death = lifespan_summary.loc[
             lifespan_summary["Filename"] == "/" + worm_id, "LifespanInFrames"
@@ -549,6 +550,8 @@ if __name__ == "__main__":
         specific_file=args.file,
         distance_threshold=args.distance_threshold,
     )
+
+    print("------ Processing 2nd group ------")
 
     process_all_files(
         TREATED,
