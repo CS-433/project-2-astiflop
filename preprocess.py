@@ -405,6 +405,39 @@ def normalize_coordinates(df):
     df["Y"] = (df["Y"] - df["Y"].min()) / (df["Y"].max() - df["Y"].min())
     return df
 
+
+def add_computed_speed_columns(df):
+    """
+    Calculate new speeds based on recomputed X and Y.
+    Adds 'ComputedSpeed_frames' and 'ComputedSpeed_timestamp'.
+    """
+    df = df.copy()
+
+    # Calculate displacement
+    dx = df["X"].diff()
+    dy = df["Y"].diff()
+    displacement = np.sqrt(dx**2 + dy**2)
+
+    # Calculate time diff for frames
+    dt_frames = df["LocalFrame"].diff()
+
+    # Calculate time diff for timestamp
+    if not pd.api.types.is_datetime64_any_dtype(df["Timestamp"]):
+        df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+
+    dt_timestamp = df["Timestamp"].diff().dt.total_seconds()
+
+    # Calculate speeds
+    df["ComputedSpeed_frames"] = displacement / dt_frames
+    df["ComputedSpeed_timestamp"] = displacement / dt_timestamp
+
+    # Fill NaNs (first row of segment) with 0.0
+    df["ComputedSpeed_frames"] = df["ComputedSpeed_frames"].fillna(0.0)
+    df["ComputedSpeed_timestamp"] = df["ComputedSpeed_timestamp"].fillna(0.0)
+
+    return df
+
+
 def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, distance_threshold=16):
     """
     Preprocess a single CSV file by applying various cleaning steps.
@@ -429,6 +462,7 @@ def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, d
     cleaned_segments = []
     for segment_id, segment_df in df.groupby("Segment"):
         # segment_df = clean_segment_gaps(segment_df) # known useless for preprocessing 6+
+        segment_df = add_computed_speed_columns(segment_df)
         segment_df = add_turning_rate_column_within_segments(segment_df)
         cleaned_segments.append(segment_df)
 
