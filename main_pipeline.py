@@ -6,7 +6,7 @@ import json
 import matplotlib.pyplot as plt
 import torch
 
-from dataset import UnifiedCElegansDataset
+from dataset import UnifiedCElegansAugmentedDataset, UnifiedCElegansDataset
 from fold_utils import get_stratified_worm_splits
 from models.model_lr import LogisticRegModel
 from models.model_rocket import RocketModel
@@ -21,7 +21,7 @@ from presents_results import (
 )
 
 
-def train_models(models: dict, model_params: dict = None):
+def train_models(models: dict, model_params: dict = None, pytorch_dir="preprocessed_data/", use_augmented_data=False):
     # Create a results dictionary to store metrics for each model
     models_results = {}
     for model_name, _ in models.items():
@@ -29,7 +29,10 @@ def train_models(models: dict, model_params: dict = None):
 
     # Load the different datasets
     dataset = UnifiedCElegansDataset(
-        pytorch_dir="preprocessed_data/",
+        pytorch_dir=pytorch_dir,
+        sklearn_dir="preprocessed_data_for_classifier/",
+    ) if not use_augmented_data else UnifiedCElegansAugmentedDataset(
+        pytorch_dir=pytorch_dir,
         sklearn_dir="preprocessed_data_for_classifier/",
     )
     if "rocket" in models:
@@ -38,9 +41,14 @@ def train_models(models: dict, model_params: dict = None):
         X_sklearn, y_sklearn, worm_ids_sklearn = dataset.get_data_for_sklearn()
 
     # Prepare data for TailMil (PyTorch)
-    if "tail_mil" in models:
+    if any(m.startswith("tail_mil") for m in models):
         worm_ids_pytorch = dataset.get_worm_ids_for_pytorch()
-        worm_id_to_idx = {wid: i for i, wid in enumerate(worm_ids_pytorch)}
+        # Handle 1-to-many mapping (for augmented dataset)
+        worm_id_to_indices = {}
+        for idx, wid in enumerate(worm_ids_pytorch):
+            if wid not in worm_id_to_indices:
+                worm_id_to_indices[wid] = []
+            worm_id_to_indices[wid].append(idx)
 
     # Load dataset summary for stratified splits
     summary_csv_path = "data/lifespan_summary.csv"
@@ -76,18 +84,17 @@ def train_models(models: dict, model_params: dict = None):
             worm_ids_test_sklearn = worm_ids_sklearn[test_mask_sklearn]
 
         # Filter TailMil Data (Indices)
-        if "tail_mil" in models:
+        if any(m.startswith("tail_mil") for m in models):
             # Map worm IDs to dataset indices
-            train_indices_mil = [
-                worm_id_to_idx[wid]
-                for wid in worm_train_indices
-                if wid in worm_id_to_idx
-            ]
-            test_indices_mil = [
-                worm_id_to_idx[wid]
-                for wid in worm_test_indices
-                if wid in worm_id_to_idx
-            ]
+            train_indices_mil = []
+            for wid in worm_train_indices:
+                if wid in worm_id_to_indices:
+                    train_indices_mil.extend(worm_id_to_indices[wid])
+            
+            test_indices_mil = []
+            for wid in worm_test_indices:
+                if wid in worm_id_to_indices:
+                    test_indices_mil.extend(worm_id_to_indices[wid])
 
         # Train and evaluate each model
         for model_name, model_func in models.items():
@@ -111,10 +118,12 @@ def train_models(models: dict, model_params: dict = None):
                     worm_ids_test_sklearn,
                     **params,
                 )
-            elif model_name == "tail_mil":
+            elif model_name.startswith("tail_mil"):
                 acc, prec, rec, f1 = model_func(
                     dataset, train_indices_mil, test_indices_mil, **params
                 )
+            else:
+                raise ValueError(f"Unknown model name: {model_name}")
 
             models_results[model_name][f"fold_{fold_idx}"] = {
                 "acc": acc,
@@ -132,24 +141,39 @@ def train_models(models: dict, model_params: dict = None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train and evaluate models.")
     parser.add_argument("--plot", action="store_true", help="Plot average results")
+    parser.add_argument("--pytorch_dir", "-d", type=str, default="preprocessed_data/", help="Path to PyTorch preprocessed data directory")
+    parser.add_argument("--augmented_data", "-a", action="store_true", help="Use augmented data for training")
     args = parser.parse_args()
 
     # Example usage
     models_to_run = {
-        "lr": LogisticRegModel,
-        "rf": RandomForestModel,
-        # "tail_mil": TailMilModel,
-        "rocket": RocketModel,
-        "xgboost": XGBoostModel,
-        "svm": SVMModel,
+        # "lr": LogisticRegModel,
+        # "rf": RandomForestModel,
+        
+        
+        "tail_mil_32e": TailMilModel,
+        "tail_mil_32b": TailMilModel,
+        "tail_mil_32b_32e": TailMilModel,
+        
+        
+        # "rocket": RocketModel,
+        # "xgboost": XGBoostModel,
+        # "svm": SVMModel,
     }
     model_params = {
-        "rf": {"rf_params": {"n_estimators": 500, "max_depth": 5, "random_state": 42}},
-        "rocket": {"rocket_params": {"num_kernels": 1000}},
+        # "rf": {"rf_params": {"n_estimators": 500, "max_depth": 5, "random_state": 42}},
+        # "rocket": {"rocket_params": {"num_kernels": 1000}},
+        
+        
+        "tail_mil_32e": {"batch_size": 8, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
+        "tail_mil_32b": {"batch_size": 32, "lr": 5e-4, "embed_dim": 8, "patience": 15}, # 0.72
+        "tail_mil_32b_32e": {"batch_size": 32, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
+        
+        
         # "rocket": {"threshold": 0.5, "num_kernels": 500},
         # "lr": {...}, "xgboost": {...}, etc.
     }
-    results = train_models(models_to_run, model_params)
+    results = train_models(models_to_run, model_params, pytorch_dir=args.pytorch_dir, use_augmented_data=args.augmented_data)
 
     # Calculate average results
     avg_results = calculate_average_results(results)

@@ -202,3 +202,116 @@ class UnifiedCElegansDataset(Dataset):
         for file_path in self.pytorch_files:
             worm_ids.append(os.path.splitext(os.path.basename(file_path))[0])
         return np.array(worm_ids)
+
+
+class UnifiedCElegansAugmentedDataset(UnifiedCElegansDataset):
+    """
+    Extends UnifiedCElegansDataset. 
+    This dataset augments each sample by creating modified versions of them.
+    Each sample has the following augmentations:
+        - Original  
+        - 3 Trajectories rotated by a random angle
+        - Trajectories with a random offset added to X and Y coordinates
+        - Trajectories scaled by a random factor between 0.8 and 1.2 (arbitrary choice)
+    The resulting dataset is 6 times larger than the original.
+    All augmentations are computed and stored in memory at initialization.
+    """
+    def __init__(self, pytorch_dir=None, sklearn_dir=None, max_segments=150, segment_len=900):
+        super().__init__(pytorch_dir, sklearn_dir, max_segments, segment_len)
+        
+        # Identify feature indices
+        self.x_idx = -1
+        self.y_idx = -1
+        self.speed_idx = -1
+        
+        if "X" in FEATURES_PYTORCH:
+            self.x_idx = FEATURES_PYTORCH.index("X")
+        if "Y" in FEATURES_PYTORCH:
+            self.y_idx = FEATURES_PYTORCH.index("Y")
+        if "Speed" in FEATURES_PYTORCH:
+            self.speed_idx = FEATURES_PYTORCH.index("Speed")
+            
+        self.augmented_data = []
+        self.augmented_labels = []
+        self.augmented_worm_ids = []
+        
+        print("Augmenting dataset in memory...")
+        n_original = len(self.pytorch_files)
+        
+        for i in tqdm(range(n_original), desc="Augmenting Data"):
+            # Get original data using parent's getitem which reads from file
+            original_tensor, label = super().__getitem__(i)
+            worm_id = os.path.splitext(os.path.basename(self.pytorch_files[i]))[0]
+            
+            # 1. Original
+            self.augmented_data.append(original_tensor)
+            self.augmented_labels.append(label)
+            self.augmented_worm_ids.append(worm_id)
+            
+            # Apply augmentations if X and Y are present
+            if self.x_idx != -1 and self.y_idx != -1:
+                X = original_tensor[:, self.x_idx, :]
+                Y = original_tensor[:, self.y_idx, :]
+                
+                # 2. Rotate by a random angle
+                theta = np.radians(np.random.uniform(0, 360))
+                c, s = np.cos(theta), np.sin(theta)
+                tens_45 = original_tensor.clone()
+                tens_45[:, self.x_idx, :] = X * c - Y * s
+                tens_45[:, self.y_idx, :] = X * s + Y * c
+                self.augmented_data.append(tens_45)
+                self.augmented_labels.append(label)
+                self.augmented_worm_ids.append(worm_id)
+                
+                # 3. Rotate by a random angle
+                theta = np.radians(np.random.uniform(0, 360))
+                c, s = np.cos(theta), np.sin(theta)
+                tens_45 = original_tensor.clone()
+                tens_45[:, self.x_idx, :] = X * c - Y * s
+                tens_45[:, self.y_idx, :] = X * s + Y * c
+                self.augmented_data.append(tens_45)
+                self.augmented_labels.append(label)
+                self.augmented_worm_ids.append(worm_id)
+
+                # 4. Rotate by a random angle
+                theta = np.radians(np.random.uniform(0, 360))
+                c, s = np.cos(theta), np.sin(theta)
+                tens_45 = original_tensor.clone()
+                tens_45[:, self.x_idx, :] = X * c - Y * s
+                tens_45[:, self.y_idx, :] = X * s + Y * c
+                self.augmented_data.append(tens_45)
+                self.augmented_labels.append(label)
+                self.augmented_worm_ids.append(worm_id)
+                
+                # 5. Random offset
+                dx = np.random.uniform(-50, 50)
+                dy = np.random.uniform(-50, 50)
+                tens_offset = original_tensor.clone()
+                # Mask for padding (assuming 0 padding)
+                mask = (tens_offset.abs().sum(dim=1) > 1e-6)
+                tens_offset[:, self.x_idx, :][mask] += dx
+                tens_offset[:, self.y_idx, :][mask] += dy
+                self.augmented_data.append(tens_offset)
+                self.augmented_labels.append(label)
+                self.augmented_worm_ids.append(worm_id)
+
+                # 6. Scale
+                scale = np.random.uniform(0.8, 1.2)
+                tens_scale = original_tensor.clone()
+                tens_scale[:, self.x_idx, :] *= scale
+                tens_scale[:, self.y_idx, :] *= scale
+                if self.speed_idx != -1:
+                    tens_scale[:, self.speed_idx, :] *= scale
+                self.augmented_data.append(tens_scale)
+                self.augmented_labels.append(label)
+                self.augmented_worm_ids.append(worm_id)
+
+    def get_worm_ids_for_pytorch(self):
+        return np.array(self.augmented_worm_ids)
+
+    def __len__(self):
+        return len(self.augmented_data)
+
+    def __getitem__(self, idx):
+        return self.augmented_data[idx], self.augmented_labels[idx]
+            
