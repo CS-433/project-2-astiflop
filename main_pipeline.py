@@ -21,21 +21,30 @@ from presents_results import (
 )
 
 
-def train_models(models: dict, model_params: dict = None, pytorch_dir="preprocessed_data/", use_augmented_data=False):
+def train_models(
+    models: dict,
+    model_params: dict = None,
+    pytorch_dir="preprocessed_data/",
+    use_augmented_data=False,
+):
     # Create a results dictionary to store metrics for each model
     models_results = {}
     for model_name, _ in models.items():
         models_results[model_name] = {}
 
     # Load the different datasets
-    dataset = UnifiedCElegansDataset(
-        pytorch_dir=pytorch_dir,
-        sklearn_dir="preprocessed_data_for_classifier/",
-    ) if not use_augmented_data else UnifiedCElegansAugmentedDataset(
-        pytorch_dir=pytorch_dir,
-        sklearn_dir="preprocessed_data_for_classifier/",
+    dataset = (
+        UnifiedCElegansDataset(
+            pytorch_dir=pytorch_dir,
+            sklearn_dir="preprocessed_data_for_classifier/",
+        )
+        if not use_augmented_data
+        else UnifiedCElegansAugmentedDataset(
+            pytorch_dir=pytorch_dir,
+            sklearn_dir="preprocessed_data_for_classifier/",
+        )
     )
-    if "rocket" in models:
+    if any("rocket" in m for m in models):
         X_rocket, y_rocket, worm_ids_rocket = dataset.get_data_for_rocket()
     if any(m in models for m in ["lr", "rf", "xgboost", "svm"]):
         X_sklearn, y_sklearn, worm_ids_sklearn = dataset.get_data_for_sklearn()
@@ -60,7 +69,7 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
         worm_test_indices = fold["val"]
 
         # Filter Rocket Data
-        if "rocket" in models:
+        if any("rocket" in m for m in models):
             train_mask_rocket = np.isin(worm_ids_rocket, worm_train_indices)
             test_mask_rocket = np.isin(worm_ids_rocket, worm_test_indices)
 
@@ -90,7 +99,7 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
             for wid in worm_train_indices:
                 if wid in worm_id_to_indices:
                     train_indices_mil.extend(worm_id_to_indices[wid])
-            
+
             test_indices_mil = []
             for wid in worm_test_indices:
                 if wid in worm_id_to_indices:
@@ -100,7 +109,7 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
         for model_name, model_func in models.items():
             print(f"Training model: {model_name}")
             params = model_params.get(model_name, {}) if model_params else {}
-            if model_name == "rocket":
+            if model_name.startswith("rocket"):
                 acc, prec, rec, f1 = model_func(
                     X_train_rocket,
                     X_test_rocket,
@@ -141,39 +150,70 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train and evaluate models.")
     parser.add_argument("--plot", action="store_true", help="Plot average results")
-    parser.add_argument("--pytorch_dir", "-d", type=str, default="preprocessed_data/", help="Path to PyTorch preprocessed data directory")
-    parser.add_argument("--augmented_data", "-a", action="store_true", help="Use augmented data for training")
+    parser.add_argument(
+        "--pytorch_dir",
+        "-d",
+        type=str,
+        default="preprocessed_data/",
+        help="Path to PyTorch preprocessed data directory",
+    )
+    parser.add_argument(
+        "--augmented_data",
+        "-a",
+        action="store_true",
+        help="Use augmented data for training",
+    )
     args = parser.parse_args()
 
     # Example usage
     models_to_run = {
         # "lr": LogisticRegModel,
         # "rf": RandomForestModel,
-        
-        
-        "tail_mil_32e": TailMilModel,
-        "tail_mil_32b": TailMilModel,
-        "tail_mil_32b_32e": TailMilModel,
-        
-        
-        # "rocket": RocketModel,
+        # "tail_mil_32e": TailMilModel,
+        # "tail_mil_32b": TailMilModel,
+        # "tail_mil_32b_32e": TailMilModel,
+        "rocket1": RocketModel,
+        "rocket2": RocketModel,
         # "xgboost": XGBoostModel,
         # "svm": SVMModel,
     }
     model_params = {
         # "rf": {"rf_params": {"n_estimators": 500, "max_depth": 5, "random_state": 42}},
         # "rocket": {"rocket_params": {"num_kernels": 1000}},
-        
-        
-        "tail_mil_32e": {"batch_size": 8, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
-        "tail_mil_32b": {"batch_size": 32, "lr": 5e-4, "embed_dim": 8, "patience": 15}, # 0.72
-        "tail_mil_32b_32e": {"batch_size": 32, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
-        
-        
-        # "rocket": {"threshold": 0.5, "num_kernels": 500},
+        # "tail_mil_32e": {
+        #     "batch_size": 8,
+        #     "lr": 5e-4,
+        #     "embed_dim": 32,
+        #     "patience": 15,
+        # },  # 0.69
+        # "tail_mil_32b": {
+        #     "batch_size": 32,
+        #     "lr": 5e-4,
+        #     "embed_dim": 8,
+        #     "patience": 15,
+        # },  # 0.72
+        # "tail_mil_32b_32e": {
+        #     "batch_size": 32,
+        #     "lr": 5e-4,
+        #     "embed_dim": 32,
+        #     "patience": 15,
+        # },  # 0.69
+        "rocket1": {
+            "threshold": 0.5,
+            "rocket_params": {"num_kernels": 500, "use_scaler": True},
+        },
+        "rocket2": {
+            "threshold": 0.5,
+            "rocket_params": {"num_kernels": 500, "use_scaler": False},
+        },
         # "lr": {...}, "xgboost": {...}, etc.
     }
-    results = train_models(models_to_run, model_params, pytorch_dir=args.pytorch_dir, use_augmented_data=args.augmented_data)
+    results = train_models(
+        models_to_run,
+        model_params,
+        pytorch_dir=args.pytorch_dir,
+        use_augmented_data=args.augmented_data,
+    )
 
     # Calculate average results
     avg_results = calculate_average_results(results)
