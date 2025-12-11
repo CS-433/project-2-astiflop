@@ -35,7 +35,7 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
         pytorch_dir=pytorch_dir,
         sklearn_dir="preprocessed_data_for_classifier/",
     )
-    if "rocket" in models:
+    if any(m.startswith("rocket") for m in models):
         X_rocket, y_rocket, worm_ids_rocket = dataset.get_data_for_rocket()
     if any(m in models for m in ["lr", "rf", "xgboost", "svm"]):
         X_sklearn, y_sklearn, worm_ids_sklearn = dataset.get_data_for_sklearn()
@@ -55,12 +55,13 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
     folds_data = get_stratified_worm_splits(summary_csv_path, n_splits=5)
 
     for fold_idx, fold in enumerate(folds_data):
+        print("-" * 40)
         print(f"Starting fold {fold_idx + 1}/{len(folds_data)}")
         worm_train_indices = fold["train"]
         worm_test_indices = fold["val"]
 
         # Filter Rocket Data
-        if "rocket" in models:
+        if any(m.startswith("rocket") for m in models):
             train_mask_rocket = np.isin(worm_ids_rocket, worm_train_indices)
             test_mask_rocket = np.isin(worm_ids_rocket, worm_test_indices)
 
@@ -100,7 +101,7 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
         for model_name, model_func in models.items():
             print(f"Training model: {model_name}")
             params = model_params.get(model_name, {}) if model_params else {}
-            if model_name == "rocket":
+            if model_name.startswith("rocket"):
                 acc, prec, rec, f1 = model_func(
                     X_train_rocket,
                     X_test_rocket,
