@@ -144,6 +144,7 @@ if __name__ == "__main__":
     parser.add_argument("--plot", action="store_true", help="Plot average results")
     parser.add_argument("--pytorch_dir", "-d", type=str, default="preprocessed_data/", help="Path to PyTorch preprocessed data directory")
     parser.add_argument("--augmented_data", "-a", action="store_true", help="Use augmented data for training")
+    parser.add_argument("--output_json", "-o", type=str, default="avg_results", help="Output JSON file for average results")
     args = parser.parse_args()
 
     # Example usage
@@ -181,7 +182,7 @@ if __name__ == "__main__":
     print(f"Average Results: {avg_results}")
 
     # Save results to JSON
-    save_results_to_json(avg_results, "avg_results.json")
+    save_results_to_json(avg_results, f"{args.output_json}.json")
 
     # Plot results if requested
     if args.plot:
