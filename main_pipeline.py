@@ -37,7 +37,7 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
     )
     if any(m.startswith("rocket") for m in models):
         X_rocket, y_rocket, worm_ids_rocket = dataset.get_data_for_rocket()
-    if any(m in models for m in ["lr", "rf", "xgboost", "svm"]):
+    if any(m in models for m in ["logReg", "rf", "xgboost", "svm"]):
         X_sklearn, y_sklearn, worm_ids_sklearn = dataset.get_data_for_sklearn()
 
     # Prepare data for TailMil (PyTorch)
@@ -73,7 +73,7 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
             worm_ids_test_rocket = worm_ids_rocket[test_mask_rocket]
 
         # Filter Sklearn Data
-        if any(m in models for m in ["lr", "rf", "xgboost", "svm"]):
+        if any(m in models for m in ["logReg", "rf", "xgboost", "svm"]):
             train_mask_sklearn = np.isin(worm_ids_sklearn, worm_train_indices)
             test_mask_sklearn = np.isin(worm_ids_sklearn, worm_test_indices)
 
@@ -110,7 +110,7 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
                     worm_ids_test_rocket,
                     **params,
                 )
-            elif model_name in ["lr", "rf", "xgboost", "svm"]:
+            elif model_name in ["logReg", "rf", "xgboost", "svm"]:
                 acc, prec, rec, f1 = model_func(
                     X_train_sklearn,
                     X_test_sklearn,
@@ -149,31 +149,38 @@ if __name__ == "__main__":
 
     # Example usage
     models_to_run = {
-        # "lr": LogisticRegModel,
-        # "rf": RandomForestModel,
-        
-        
-        "tail_mil_32e": TailMilModel,
-        "tail_mil_32b": TailMilModel,
-        "tail_mil_32b_32e": TailMilModel,
-        
-        
-        # "rocket": RocketModel,
+        "logReg": LogisticRegModel,
         # "xgboost": XGBoostModel,
+        "rocket_500": RocketModel,
+        "tail_mil": TailMilModel,
+        
+        # "rocket_500": RocketModel,
+        
+        # "tail_mil_32e": TailMilModel,
+        # "tail_mil_32b_32e": TailMilModel,
+        # "tail_mil_32b": TailMilModel,
+        # "tail_mil_32b_1-3lr": TailMilModel,
+        # "tail_mil_64b": TailMilModel,
+        
+        # "rf": RandomForestModel,
         # "svm": SVMModel,
     }
     model_params = {
         # "rf": {"rf_params": {"n_estimators": 500, "max_depth": 5, "random_state": 42}},
-        # "rocket": {"rocket_params": {"num_kernels": 1000}},
+        # "rocket_1000": {"rocket_params": {"num_kernels": 1000}},
+        # "rocket_500": {"rocket_params": {"num_kernels": 500}},
         
         
-        "tail_mil_32e": {"batch_size": 8, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
-        "tail_mil_32b": {"batch_size": 32, "lr": 5e-4, "embed_dim": 8, "patience": 15}, # 0.72
-        "tail_mil_32b_32e": {"batch_size": 32, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
+        # "tail_mil_32e": {"batch_size": 8, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
+        # "tail_mil_32b_32e": {"batch_size": 32, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
+        # "tail_mil_32b": {"batch_size": 32, "lr": 5e-4, "embed_dim": 8, "patience": 15, "device": "cuda:2"}, # 0.72
+        # "tail_mil_32b_1-3lr": {"batch_size": 32, "lr": 1e-3, "embed_dim": 8, "patience": 15, "device": "cuda:2"},
+        # "tail_mil_64b": {"batch_size": 64, "lr": 5e-4, "embed_dim": 8, "patience": 15, "device": "cuda:2"}, 
         
-        
-        # "rocket": {"threshold": 0.5, "num_kernels": 500},
-        # "lr": {...}, "xgboost": {...}, etc.
+        "logReg": {"lr_params": {"max_iter": 1000}},
+        # "xgboost": {"xgb_params": {"n_estimators": 500, "max_depth": 5, "use_label_encoder": False, "eval_metric": "logloss"}},
+        "rocket_500": {"rocket_params": {"num_kernels": 500}},
+        "tail_mil": {"batch_size": 32, "lr": 1e-3, "embed_dim": 8, "patience": 15, "device": "cuda:1"},
     }
     results = train_models(models_to_run, model_params, pytorch_dir=args.pytorch_dir, use_augmented_data=args.augmented_data)
 
