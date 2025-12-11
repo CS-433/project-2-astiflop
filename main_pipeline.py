@@ -21,7 +21,12 @@ from presents_results import (
 )
 
 
-def train_models(models: dict, model_params: dict = None, pytorch_dir="preprocessed_data/", use_augmented_data=False):
+def train_models(
+    models: dict,
+    model_params: dict = None,
+    pytorch_dir="preprocessed_data/",
+    use_augmented_data=False,
+):
     # Create a results dictionary to store metrics for each model
     models_results = {}
     for model_name, _ in models.items():
@@ -91,7 +96,7 @@ def train_models(models: dict, model_params: dict = None, pytorch_dir="preproces
             for wid in worm_train_indices:
                 if wid in worm_id_to_indices:
                     train_indices_mil.extend(worm_id_to_indices[wid])
-            
+
             test_indices_mil = []
             for wid in worm_test_indices:
                 if wid in worm_id_to_indices:
@@ -182,7 +187,12 @@ if __name__ == "__main__":
         "rocket_500": {"rocket_params": {"num_kernels": 500}},
         "tail_mil": {"batch_size": 32, "lr": 1e-3, "embed_dim": 8, "patience": 15, "device": "cuda:1"},
     }
-    results = train_models(models_to_run, model_params, pytorch_dir=args.pytorch_dir, use_augmented_data=args.augmented_data)
+    results = train_models(
+        models_to_run,
+        model_params,
+        pytorch_dir=args.pytorch_dir,
+        use_augmented_data=args.augmented_data,
+    )
 
     # Calculate average results
     avg_results = calculate_average_results(results)

@@ -1,5 +1,9 @@
 /.vscode/
-/preprocessed_data*/
+/preprocessed_data/
+/preprocessed_data_for_classifier/
+
+/CNN/worm_trajectories/
+/test
 
 # Python cache
 __pycache__/
