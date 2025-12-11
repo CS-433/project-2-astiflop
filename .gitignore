@@ -1,6 +1,5 @@
 /.vscode/
-/preprocessed_data/
-/preprocessed_data_for_classifier/
+/preprocessed*/
 
 /CNN/worm_trajectories/
 /test
