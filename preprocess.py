@@ -405,6 +405,36 @@ def normalize_coordinates(df):
     df["Y"] = (df["Y"] - df["Y"].min()) / (df["Y"].max() - df["Y"].min())
     return df
 
+def normalize_coordinates_and_speed(df):
+    """
+    Applies Min-Max normalization (scaling to a 0-1 range) to the fixed 
+    columns: 'X', 'Y', 'Speed', 'ComputedSpeed_frames', and 'ComputedSpeed_timestamp'.
+    """
+    
+    columns_to_normalize = ['X', 'Y', 'Speed', 'ComputedSpeed_frames', 'ComputedSpeed_timestamp']
+    
+    df_normalized = df.copy()
+
+    for column in columns_to_normalize:
+        # Check if the column exists
+        if column not in df_normalized.columns:
+            print(f"Warning: Column '{column}' not found in DataFrame. Skipping.")
+            continue
+
+        # Calculate min/max and apply the formula
+        min_val = df_normalized[column].min()
+        max_val = df_normalized[column].max()
+        denominator = max_val - min_val
+
+        # Avoid division by zero
+        if denominator == 0:
+            print(f"Note: Column '{column}' has a constant value. Setting normalized value to 0.")
+            df_normalized[column] = 0.0
+        else:
+            # Min-Max normalization formula: (X - min) / (max - min)
+            df_normalized[column] = (df_normalized[column] - min_val) / denominator
+
+    return df_normalized
 
 def add_computed_speed_columns(df):
     """
@@ -469,7 +499,8 @@ def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, d
     cleaned_df = pd.concat(cleaned_segments).reset_index(drop=True)
 
     if normalize_coords:
-        cleaned_df = normalize_coordinates(cleaned_df)
+        # cleaned_df = normalize_coordinates(cleaned_df)
+        cleaned_df = normalize_coordinates_and_speed(cleaned_df)
 
     cleaned_df.to_csv(file, index=False)
 
