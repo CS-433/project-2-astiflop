@@ -259,11 +259,11 @@ def TailMilModel(
         if epochs_no_improve >= patience:
             break
 
-    print("\n=== Train/Test Summary ===")
-    print(f"Val Acc: {best_val_acc:.4f}")
-    print(f"Val Prec: {best_val_prec:.4f}")
-    print(f"Val Rec: {best_val_rec:.4f}")
-    print(f"Val F1: {best_val_f1:.4f}")
-    print(f"Val AUC: {best_val_auc:.4f}")
+    # print("\n=== Train/Test Summary ===")
+    # print(f"Val Acc: {best_val_acc:.4f}")
+    # print(f"Val Prec: {best_val_prec:.4f}")
+    # print(f"Val Rec: {best_val_rec:.4f}")
+    # print(f"Val F1: {best_val_f1:.4f}")
+    # print(f"Val AUC: {best_val_auc:.4f}")
 
     return best_val_acc, best_val_prec, best_val_rec, best_val_f1
