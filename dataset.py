@@ -306,6 +306,48 @@ class UnifiedCElegansAugmentedDataset(UnifiedCElegansDataset):
                 self.augmented_labels.append(label)
                 self.augmented_worm_ids.append(worm_id)
 
+    def get_data_for_rocket(self, feature_cols=None):
+        """
+        Returns the augmented data for ROCKET.
+        Note: This uses the features defined in FEATURES_PYTORCH as that is what is stored in memory.
+        The data is flattened from (Segments, Channels, Length) to (Channels, Segments*Length).
+        """
+        print("Loading augmented data for ROCKET from memory...")
+        X = []
+        y = []
+        ids = []
+        
+        for tensor, label, worm_id in zip(self.augmented_data, self.augmented_labels, self.augmented_worm_ids):
+            flat_ts = tensor.permute(1, 0, 2).reshape(tensor.shape[1], -1).numpy()
+            X.append(flat_ts)
+            y.append(label.item())
+            ids.append(worm_id)
+            
+        return np.array(X), np.array(y), np.array(ids)
+
+    def get_data_for_sklearn(self, feature_cols=None):
+        """
+        Returns the augmented data for Sklearn.
+        Since we cannot easily compute the scalar features (Age, Tortuosity, etc.) for the augmented data,
+        we return the flattened raw trajectories.
+        
+        Shape: (n_samples, n_channels * max_segments * segment_len)
+        """
+        print("Loading augmented data for Sklearn from memory (Flattened Trajectories)...")
+        X = []
+        y = []
+        ids = []
+        
+        for tensor, label, worm_id in zip(self.augmented_data, self.augmented_labels, self.augmented_worm_ids):
+            # tensor: (max_segments, n_channels, segment_len)
+            # Flatten completely
+            flat_features = tensor.numpy().flatten()
+            X.append(flat_features)
+            y.append(label.item())
+            ids.append(worm_id)
+            
+        return np.array(X), np.array(y), np.array(ids)
+
     def get_worm_ids_for_pytorch(self):
         return np.array(self.augmented_worm_ids)
 
