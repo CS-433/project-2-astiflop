@@ -6,6 +6,8 @@
 /CNN/worm_trajectories/
 /test
 
+results/
+
 # Python cache
 __pycache__/
 *.py[cod]
