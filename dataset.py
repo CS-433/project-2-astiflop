@@ -363,24 +363,3 @@ class UnifiedCElegansAugmentedDataset(UnifiedCElegansDataset):
 
     def __getitem__(self, idx):
         return self.augmented_data[idx], self.augmented_labels[idx]
-
-    def get_data_for_rocket(self, feature_cols=None):
-        """
-        Returns the augmented data for ROCKET.
-        Note: This uses the features defined in FEATURES_PYTORCH as that is what is stored in memory.
-        The data is flattened from (Segments, Channels, Length) to (Channels, Segments*Length).
-        """
-        print("Loading augmented data for ROCKET from memory...")
-        X = []
-        y = []
-        ids = []
-
-        for tensor, label, worm_id in zip(
-            self.augmented_data, self.augmented_labels, self.augmented_worm_ids
-        ):
-            flat_ts = tensor.permute(1, 0, 2).reshape(tensor.shape[1], -1).numpy()
-            X.append(flat_ts)
-            y.append(label.item())
-            ids.append(worm_id)
-
-        return np.array(X), np.array(y), np.array(ids)
