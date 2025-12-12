@@ -13,12 +13,21 @@ def LogisticRegModel(
         {
             "solver": lr_params.get("solver", "liblinear"),
             "random_state": lr_params.get("random_state", 42),
+            "use_scaler": lr_params.get("use_scaler", True),
         }
         if lr_params
-        else {"solver": "liblinear", "random_state": 42}
+        else {"solver": "liblinear", "random_state": 42, "use_scaler": True}
     )
 
-    clf = make_pipeline(StandardScaler(), LogisticRegression(**lr_params))
+    steps = []
+    if lr_params["use_scaler"]:
+        steps.append(StandardScaler())
+    
+    # Remove use_scaler from params before passing to LogisticRegression
+    lr_kwargs = {k: v for k, v in lr_params.items() if k != "use_scaler"}
+    steps.append(LogisticRegression(**lr_kwargs))
+
+    clf = make_pipeline(*steps)
     clf.fit(X_train, y_train)
     y_proba = clf.predict_proba(X_test)[:, 1]
 

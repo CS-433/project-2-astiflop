@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, Dataset
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
@@ -11,6 +11,7 @@ from sklearn.metrics import (
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from tqdm import tqdm
 
 
@@ -173,6 +174,73 @@ if __name__ == "__main__":
     print(f"Variable Attention Shape: {v_importance.shape}")  # Should be (2, 75, 3)
 
 
+class ScaledDataset(Dataset):
+    def __init__(self, dataset, mean, std):
+        self.dataset = dataset
+        self.mean = mean.view(1, -1, 1)  # (1, F, 1)
+        self.std = std.view(1, -1, 1)    # (1, F, 1)
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        x, y = self.dataset[idx]
+        # x shape: (max_segments, features, segment_len)
+        
+        # Identify non-padded segments (assuming padding is zero and valid data is not all zero)
+        # x shape: (S, F, L) -> flatten F and L to check if segment is all zeros
+        mask = (x.view(x.size(0), -1).abs().sum(dim=-1) > 1e-6).float().view(-1, 1, 1) # (max_segments, 1, 1)
+        
+        # Apply scaling
+        x_scaled = (x - self.mean) / (self.std + 1e-8)
+        
+        # Re-apply mask to ensure padding remains zero
+        x_scaled = x_scaled * mask
+        
+        # DEBUG: print stats about the scaled features
+        # print(f"feature 1 after scaling: min={x_scaled[:,:,0].min().item():.4f}, max={x_scaled[:,:,0].max().item():.4f}, mean={x_scaled[:,:,0].mean().item():.4f}, std={x_scaled[:,:,0].std().item():.4f}")
+        # print(f"feature 2 after scaling: min={x_scaled[:,:,1].min().item():.4f}, max={x_scaled[:,:,1].max().item():.4f}, mean={x_scaled[:,:,1].mean().item():.4f}, std={x_scaled[:,:,1].std().item():.4f}")
+        # print(f"feature 3 after scaling: min={x_scaled[:,:,2].min().item():.4f}, max={x_scaled[:,:,2].max().item():.4f}, mean={x_scaled[:,:,2].mean().item():.4f}, std={x_scaled[:,:,2].std().item():.4f}")
+        # exit(0)
+        return x_scaled, y
+
+def compute_stats(dataset, indices, batch_size=32):
+    loader = DataLoader(Subset(dataset, indices), batch_size=batch_size, shuffle=False)
+    
+    n_samples = 0
+    sum_x = None
+    sum_sq_x = None
+    
+    for x, _ in loader:
+        # x: (B, S, F, L)
+        B, S, F, L = x.shape
+        
+        if sum_x is None:
+            sum_x = torch.zeros(F)
+            sum_sq_x = torch.zeros(F)
+            
+        # Mask for valid segments
+        mask = (x.view(B, S, -1).abs().sum(dim=-1) > 1e-6)
+        
+        # x[mask] -> (N_valid, F, L)
+        valid_x = x[mask]
+        
+        if valid_x.numel() == 0:
+            continue
+            
+        # Reshape to (N_valid * L, F)
+        valid_x_flat = valid_x.transpose(1, 2).reshape(-1, F)
+        
+        sum_x += valid_x_flat.sum(dim=0)
+        sum_sq_x += (valid_x_flat ** 2).sum(dim=0)
+        n_samples += valid_x_flat.shape[0]
+        
+    mean = sum_x / n_samples
+    std = torch.sqrt(sum_sq_x / n_samples - mean ** 2)
+    
+    return mean, std
+
+
 def TailMilModel(
     dataset,
     train_indices,
@@ -183,14 +251,24 @@ def TailMilModel(
     epochs=100,
     patience=10,
     threshold=0.5,
+    use_scaler=False,
     device="cuda" if torch.cuda.is_available() else "cpu",
 ):
-    train_loader = DataLoader(
-        Subset(dataset, train_indices), batch_size=batch_size, shuffle=True
-    )
-    test_loader = DataLoader(
-        Subset(dataset, test_indices), batch_size=batch_size, shuffle=False
-    )
+    if use_scaler:
+        mean, std = compute_stats(dataset, train_indices, batch_size=batch_size)
+        
+        train_subset = ScaledDataset(Subset(dataset, train_indices), mean, std)
+        test_subset = ScaledDataset(Subset(dataset, test_indices), mean, std)
+        
+        train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+        test_loader = DataLoader(test_subset, batch_size=batch_size, shuffle=False)
+    else:
+        train_loader = DataLoader(
+            Subset(dataset, train_indices), batch_size=batch_size, shuffle=True
+        )
+        test_loader = DataLoader(
+            Subset(dataset, test_indices), batch_size=batch_size, shuffle=False
+        )
 
     model = TAIL_MIL(
         segment_len=dataset.segment_len, embed_dim=embed_dim
