@@ -1,5 +1,7 @@
 import numpy as np
 import argparse
+import joblib
+import torch
 
 from dataset import UnifiedCElegansAugmentedDataset, UnifiedCElegansDataset
 from fold_utils import get_stratified_worm_splits
@@ -8,12 +10,15 @@ from models.model_rocket import RocketModel
 from models.model_rf import RandomForestModel
 from models.model_xgboost import XGBoostModel
 from models.model_svm import SVMModel
-from models.model_tail_mil import TailMilModel
+from models.model_tail_mil import TailMilModel, ScaledDataset
 from presents_results import (
     plot_results,
     save_results_to_json,
     calculate_average_results,
 )
+from torch.utils.data import DataLoader
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
+import warnings
 
 
 def train_models(
@@ -29,8 +34,8 @@ def train_models(
         models_results[model_name] = {}
 
     best_overall_f1 = -1
-    best_overall_model = None
     best_overall_model_name = ""
+    best_overall_model_instance = None
 
     # Load the different datasets
     dataset = UnifiedCElegansDataset(
@@ -134,9 +139,13 @@ def train_models(
             if prod:
                 if f1 > best_overall_f1:
                     best_overall_f1 = f1
-                    best_overall_model = trained_model
                     best_overall_model_name = model_name
+                    best_overall_model_instance = trained_model
                     print(f"-> New best model found: {model_name} (F1={f1:.4f})")
+                    if model_name.startswith("tail_mil"):
+                        torch.save(trained_model.state_dict(), "best_model.pth")
+                    else:
+                        joblib.dump(trained_model, "best_model.pkl")
 
             models_results[model_name][f"fold_{fold_idx}"] = {
                 "acc": acc,
@@ -148,17 +157,53 @@ def train_models(
                 f"Results for {model_name} fold {fold_idx+1}: acc={acc:.4f}, f1={f1:.4f}"
             )
 
-    if prod and best_overall_model is not None:
-        import joblib
-        import torch
-
-        print(
-            f"Saving best model: {best_overall_model_name} with F1={best_overall_f1:.4f}"
+    # Sanity Check for TailMil
+    if prod and best_overall_model_name.startswith("tail_mil") and best_overall_model_instance is not None:
+        print("\n=== Performing Sanity Check on Best TailMil Model ===")
+        
+        # Load non-augmented dataset
+        sanity_dataset = UnifiedCElegansDataset(
+            pytorch_dir=pytorch_dir,
+            sklearn_dir="preprocessed_data_for_classifier/",
         )
-        if best_overall_model_name.startswith("tail_mil"):
-            torch.save(best_overall_model.state_dict(), "best_model.pth")
+        
+        model = best_overall_model_instance
+        device = next(model.parameters()).device
+        
+        if hasattr(model, 'mean') and model.mean is not None:
+            print("Applying scaling from training...")
+            sanity_dataset = ScaledDataset(sanity_dataset, model.mean, model.std)
+            
+        sanity_loader = DataLoader(sanity_dataset, batch_size=32, shuffle=False)
+        
+        model.eval()
+        all_preds = []
+        all_labels = []
+        
+        with torch.no_grad():
+            for X, y in sanity_loader:
+                X = X.to(device)
+                preds, _, _ = model(X)
+                preds = preds.squeeze().cpu().numpy()
+                all_preds.extend(preds)
+                all_labels.extend(y.numpy())
+                
+        all_preds = np.array(all_preds)
+        all_labels = np.array(all_labels)
+        preds_binary = (all_preds > 0.5).astype(int)
+        
+        # Metrics
+        acc = accuracy_score(all_labels, preds_binary)
+        f1 = f1_score(all_labels, preds_binary)
+        print(f"Sanity Check Results (Non-Augmented Data): Acc={acc:.4f}, F1={f1:.4f}")
+        
+        # Catastrophic Failure Check
+        unique_preds = np.unique(preds_binary)
+        if len(unique_preds) == 1:
+            warnings.warn(f"Catastrophic Failure Detected: Model predicts only class {unique_preds[0]}!")
+            print(f"WARNING: Catastrophic Failure Detected: Model predicts only class {unique_preds[0]}!")
         else:
-            joblib.dump(best_overall_model, "best_model.pkl")
+            print("Sanity Check Passed: Model predicts both classes.")
 
     return models_results
 
@@ -174,38 +219,39 @@ if __name__ == "__main__":
 
     # Example usage
     models_to_run = {
-        "logReg": LogisticRegModel,
-        # "xgboost": XGBoostModel,
-        "rocket_500": RocketModel,
-        "tail_mil": TailMilModel,
-        
+        # "logReg": LogisticRegModel,
         # "rocket_500": RocketModel,
-        
-        # "tail_mil_32e": TailMilModel,
-        # "tail_mil_32b_32e": TailMilModel,
-        # "tail_mil_32b": TailMilModel,
-        # "tail_mil_32b_1-3lr": TailMilModel,
-        # "tail_mil_64b": TailMilModel,
-        
-        # "rf": RandomForestModel,
-        # "svm": SVMModel,
+        # "rocket_1000": RocketModel,
+        # "tail_mil_32b_8e_1e3": TailMilModel,
+        # "tail_mil_16b_8e_1e3": TailMilModel,
+        # "tail_mil_32b_8e_1e4": TailMilModel,
+
+
+        # "tail_mil_32b_16e_1e3": TailMilModel,
+        # "tail_mil_16b_16e_1e3": TailMilModel,
+        # "tail_mil_64b_16e_1e3": TailMilModel,
+        # "tail_mil_32b_32e_1e4": TailMilModel,
+
+
+        "tail_mil_32b_16e_1e4": TailMilModel,
+        "tail_mil_64b_16e_1e4": TailMilModel,
     }
     model_params = {
-        # "rf": {"rf_params": {"n_estimators": 500, "max_depth": 5, "random_state": 42}},
-        # "rocket_1000": {"rocket_params": {"num_kernels": 1000}},
-        # "rocket_500": {"rocket_params": {"num_kernels": 500}},
+        # "logReg": {"lr_params": {"max_iter": 1000, "use_scaler": True}},
+        # "rocket_500": {"rocket_params": {"num_kernels": 500, "use_scaler": True}},
+        # "rocket_1000": {"rocket_params": {"num_kernels": 1000, "use_scaler": True}},
+        # "tail_mil_32b_8e_1e3": {"batch_size": 32, "lr": 1e-3, "embed_dim": 8, "patience": 15, "use_scaler": True, "device": "cuda:1"},
+        # "tail_mil_16b_8e_1e3": {"batch_size": 16, "lr": 1e-3, "embed_dim": 8, "patience": 15, "use_scaler": True, "device": "cuda:1"},
+        # "tail_mil_32b_8e_1e4": {"batch_size": 32, "lr": 1e-4, "embed_dim": 8, "patience": 15, "use_scaler": True, "device": "cuda:2"},
+        
+        # "tail_mil_32b_16e_1e3": {"batch_size": 32, "embed_dim": 16, "lr": 1e-3, "patience": 15, "use_scaler": True, "device": "cuda:1"},
+        # "tail_mil_16b_16e_1e3": {"batch_size": 16, "embed_dim": 16, "lr": 1e-3, "patience": 15, "use_scaler": True, "device": "cuda:1"},
+        # "tail_mil_64b_16e_1e3": {"batch_size": 64, "embed_dim": 16, "lr": 1e-3, "patience": 15, "use_scaler": True, "device": "cuda:1"},
+        # "tail_mil_32b_32e_1e4": {"batch_size": 32, "embed_dim": 32, "lr": 1e-4, "patience": 25, "use_scaler": True, "device": "cuda:2"},
         
         
-        # "tail_mil_32e": {"batch_size": 8, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
-        # "tail_mil_32b_32e": {"batch_size": 32, "lr": 5e-4, "embed_dim": 32, "patience": 15}, # 0.69
-        # "tail_mil_32b": {"batch_size": 32, "lr": 5e-4, "embed_dim": 8, "patience": 15, "device": "cuda:2"}, # 0.72
-        # "tail_mil_32b_1-3lr": {"batch_size": 32, "lr": 1e-3, "embed_dim": 8, "patience": 15, "device": "cuda:2"},
-        # "tail_mil_64b": {"batch_size": 64, "lr": 5e-4, "embed_dim": 8, "patience": 15, "device": "cuda:2"}, 
-        
-        "logReg": {"lr_params": {"max_iter": 1000}},
-        # "xgboost": {"xgb_params": {"n_estimators": 500, "max_depth": 5, "use_label_encoder": False, "eval_metric": "logloss"}},
-        "rocket_500": {"rocket_params": {"num_kernels": 500}},
-        "tail_mil": {"batch_size": 32, "lr": 1e-3, "embed_dim": 8, "patience": 15, "device": "cuda:1"},
+        "tail_mil_32b_16e_1e4": {"batch_size": 32, "embed_dim": 16, "lr": 1e-4, "patience": 30, "use_scaler": True, "device": "cuda:2"},
+        "tail_mil_64b_16e_1e4": {"batch_size": 64, "embed_dim": 16, "lr": 1e-4, "patience": 30, "use_scaler": True, "device": "cuda:2"},
     }
     results = train_models(
         models_to_run,

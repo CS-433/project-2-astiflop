@@ -256,13 +256,24 @@ def TailMilModel(
 ):
     if use_scaler:
         mean, std = compute_stats(dataset, train_indices, batch_size=batch_size)
+        print(f"Computed feature means: {mean}, stds: {std}")
         
         train_subset = ScaledDataset(Subset(dataset, train_indices), mean, std)
         test_subset = ScaledDataset(Subset(dataset, test_indices), mean, std)
+
+        ############# DEBUG
+        # Compute class balance in scaled datasets
+        # train_labels = [y for _, y in train_subset]
+        # test_labels = [y for _, y in test_subset]
+        # print(f"Train set class balance (scaled): {np.bincount(train_labels)}")
+        # print(f"Test set class balance (scaled): {np.bincount(test_labels)}")
+        # exit(0)
+        #############
         
         train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
         test_loader = DataLoader(test_subset, batch_size=batch_size, shuffle=False)
     else:
+        mean, std = None, None
         train_loader = DataLoader(
             Subset(dataset, train_indices), batch_size=batch_size, shuffle=True
         )
@@ -273,6 +284,8 @@ def TailMilModel(
     model = TAIL_MIL(
         segment_len=dataset.segment_len, embed_dim=embed_dim
     ).to(device)
+    model.mean = mean
+    model.std = std
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.BCELoss()
 
