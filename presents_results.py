@@ -1,6 +1,7 @@
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 
 def calculate_average_results(results):
@@ -32,26 +33,51 @@ def save_results_to_json(results, filename="results.json"):
 
 
 def plot_results(avg_results):
-    metrics = ["acc", "prec", "rec", "f1"]
-    model_names = list(avg_results.keys())
+    metrics = ["acc", "f1"]
+    # Sort model names by F1 score in descending order
+    model_names = sorted(list(avg_results.keys()), key=lambda x: avg_results[x]["f1"], reverse=True)
 
-    x = np.arange(len(metrics))  # the label locations
-    width = 0.15  # the width of the bars
+    x = np.arange(len(model_names))  # the label locations
+    width = 0.35  # the width of the bars
 
     fig, ax = plt.subplots(figsize=(14, 6))
 
-    for i, model_name in enumerate(model_names):
-        means = [avg_results[model_name][m] for m in metrics]
-        stds = [avg_results[model_name][f"{m}_std"] for m in metrics]
+    def get_color(name):
+        if "logReg" in name:
+            return "tab:blue"
+        elif "rocket" in name:
+            return "tab:red"
+        elif "tail_mil" in name:
+            return "tab:green"
+        else:
+            return "tab:gray"
 
-        offset = width * i - width * (len(model_names) - 1) / 2
-        rects = ax.bar(x + offset, means, width, yerr=stds, capsize=5, label=model_name)
-        ax.bar_label(rects, padding=3, fmt="%.2f")
+    bar_colors = [get_color(name) for name in model_names]
+
+    acc_means = [avg_results[model_name]["acc"] for model_name in model_names]
+    acc_stds = [avg_results[model_name]["acc_std"] for model_name in model_names]
+    f1_means = [avg_results[model_name]["f1"] for model_name in model_names]
+    f1_stds = [avg_results[model_name]["f1_std"] for model_name in model_names]
+
+    rects1 = ax.bar(x - width/2, acc_means, width, yerr=acc_stds, capsize=5, label='Accuracy', color=bar_colors)
+    rects2 = ax.bar(x + width/2, f1_means, width, yerr=f1_stds, capsize=5, label='F1 Score', color=bar_colors, alpha=0.5)
+
+    ax.bar_label(rects1, padding=3, fmt="%.2f")
+    ax.bar_label(rects2, padding=3, fmt="%.2f")
 
     ax.set_ylabel("Scores")
-    ax.set_title("Average Model Performance by Metric (with Error Bars)")
-    ax.set_xticks(x, metrics)
-    ax.legend()
+    ax.set_title("Model Performance: Accuracy vs F1")
+    ax.set_xticks(x)
+    ax.set_xticklabels(model_names, rotation=45, ha="right")
+
+    legend_elements = [
+        Patch(facecolor='tab:blue', label='logReg'),
+        Patch(facecolor='tab:red', label='rocket'),
+        Patch(facecolor='tab:green', label='tail_mil'),
+        Patch(facecolor='gray', label='Accuracy'),
+        Patch(facecolor='gray', alpha=0.5, label='F1 Score'),
+    ]
+    ax.legend(handles=legend_elements)
 
     fig.tight_layout()
     plt.show()
@@ -61,9 +87,14 @@ def plot_results(avg_results):
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Process and plot model results.")
+    parser.add_argument("--results_file", "-r", type=str, default="results.json",
+                        help="Path to the JSON file containing model results.")
+    args = parser.parse_args()
     # Example usage
     # Load results from a JSON file
-    with open("avg_results.json", "r") as f:
+    with open(args.results_file, "r") as f:
         avg_results = json.load(f)
 
     plot_results(avg_results)
