@@ -1,6 +1,8 @@
 /.vscode/
 /preprocessed*/
 
+/venv*/
+
 /CNN/worm_trajectories/
 /test
 
