@@ -97,4 +97,4 @@ def RocketModel(
 
     acc, prec, rec, f1 = compute_metrics(y_test, y_pred)
 
-    return acc, prec, rec, f1
+    return acc, prec, rec, f1, pipeline

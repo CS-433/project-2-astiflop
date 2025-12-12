@@ -21,11 +21,16 @@ def train_models(
     model_params: dict = None,
     pytorch_dir="preprocessed_data/",
     use_augmented_data=False,
+    prod=False,
 ):
     # Create a results dictionary to store metrics for each model
     models_results = {}
     for model_name, _ in models.items():
         models_results[model_name] = {}
+
+    best_overall_f1 = -1
+    best_overall_model = None
+    best_overall_model_name = ""
 
     # Load the different datasets
     dataset = UnifiedCElegansDataset(
@@ -102,7 +107,7 @@ def train_models(
             print(f"Training model: {model_name}")
             params = model_params.get(model_name, {}) if model_params else {}
             if model_name.startswith("rocket"):
-                acc, prec, rec, f1 = model_func(
+                acc, prec, rec, f1, trained_model = model_func(
                     X_train_rocket,
                     X_test_rocket,
                     y_train_rocket,
@@ -111,7 +116,7 @@ def train_models(
                     **params,
                 )
             elif model_name in ["logReg", "rf", "xgboost", "svm"]:
-                acc, prec, rec, f1 = model_func(
+                acc, prec, rec, f1, trained_model = model_func(
                     X_train_sklearn,
                     X_test_sklearn,
                     y_train_sklearn,
@@ -120,11 +125,18 @@ def train_models(
                     **params,
                 )
             elif model_name.startswith("tail_mil"):
-                acc, prec, rec, f1 = model_func(
+                acc, prec, rec, f1, trained_model = model_func(
                     dataset, train_indices_mil, test_indices_mil, **params
                 )
             else:
                 raise ValueError(f"Unknown model name: {model_name}")
+
+            if prod:
+                if f1 > best_overall_f1:
+                    best_overall_f1 = f1
+                    best_overall_model = trained_model
+                    best_overall_model_name = model_name
+                    print(f"-> New best model found: {model_name} (F1={f1:.4f})")
 
             models_results[model_name][f"fold_{fold_idx}"] = {
                 "acc": acc,
@@ -136,6 +148,18 @@ def train_models(
                 f"Results for {model_name} fold {fold_idx+1}: acc={acc:.4f}, f1={f1:.4f}"
             )
 
+    if prod and best_overall_model is not None:
+        import joblib
+        import torch
+
+        print(
+            f"Saving best model: {best_overall_model_name} with F1={best_overall_f1:.4f}"
+        )
+        if best_overall_model_name.startswith("tail_mil"):
+            torch.save(best_overall_model.state_dict(), "best_model.pth")
+        else:
+            joblib.dump(best_overall_model, "best_model.pkl")
+
     return models_results
 
 
@@ -145,6 +169,7 @@ if __name__ == "__main__":
     parser.add_argument("--pytorch_dir", "-d", type=str, default="preprocessed_data/", help="Path to PyTorch preprocessed data directory")
     parser.add_argument("--augmented_data", "-a", action="store_true", help="Use augmented data for training")
     parser.add_argument("--output_json", "-o", type=str, default="avg_results", help="Output JSON file for average results")
+    parser.add_argument("--prod", action="store_true", help="Run in production mode (save best model)")
     args = parser.parse_args()
 
     # Example usage
@@ -187,6 +212,7 @@ if __name__ == "__main__":
         model_params,
         pytorch_dir=args.pytorch_dir,
         use_augmented_data=args.augmented_data,
+        prod=args.prod,
     )
 
     # Calculate average results

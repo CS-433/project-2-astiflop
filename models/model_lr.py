@@ -36,4 +36,4 @@ def LogisticRegModel(
     )
     acc, prec, rec, f1 = compute_metrics(worm_truth, worm_preds)
 
-    return acc, prec, rec, f1
+    return acc, prec, rec, f1, clf

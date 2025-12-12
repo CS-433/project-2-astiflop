@@ -282,6 +282,7 @@ def TailMilModel(
     best_val_prec = 0
     best_val_rec = 0
     epochs_no_improve = 0
+    best_model_state = None
 
     for epoch in tqdm(range(epochs), desc="Training TAIL-MIL"):
         model.train()
@@ -326,7 +327,7 @@ def TailMilModel(
             best_val_rec = val_rec
             best_val_auc = val_auc
             epochs_no_improve = 0
-            torch.save(model.state_dict(), "tail_mil_worm_best.pth")
+            best_model_state = model.state_dict()
         else:
             epochs_no_improve += 1
         
@@ -344,4 +345,7 @@ def TailMilModel(
     # print(f"Val F1: {best_val_f1:.4f}")
     # print(f"Val AUC: {best_val_auc:.4f}")
 
-    return best_val_acc, best_val_prec, best_val_rec, best_val_f1
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+
+    return best_val_acc, best_val_prec, best_val_rec, best_val_f1, model
