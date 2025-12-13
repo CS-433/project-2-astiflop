@@ -1,5 +1,6 @@
 /.vscode/
 /preprocessed*/
+/cnn_dataset/
 
 /venv*/
 
