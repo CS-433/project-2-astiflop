@@ -2,12 +2,15 @@ import numpy as np
 import pandas as pd
 import os
 import argparse
+import matplotlib.pyplot as plt
+import cv2
 from glob import glob
 
 import tqdm
 
 CONTROL = "TERBINAFINE- (control)"
 TREATED = "TERBINAFINE+"
+
 
 def rename_file(file_name, treatment, treatment_dir):
     """
@@ -241,6 +244,7 @@ def remove_large_displacement_outliers(df, distance_threshold=2):
 
     return df
 
+
 def filter_and_transform_to_displacement(df, distance_threshold=2):
     """
     1. Drop rows with NaN in X or Y.
@@ -293,7 +297,7 @@ def filter_and_reconstruct_coordinates(df, distance_threshold=2):
     """
     # 1. Drop NA for X or Y
     df = df.dropna(subset=["X", "Y"]).copy()
-    
+
     if df.empty:
         return df
 
@@ -307,7 +311,7 @@ def filter_and_reconstruct_coordinates(df, distance_threshold=2):
     df["dy"] = df["Y"].diff().fillna(0)
 
     # 3. Displacement column
-    df["Displacement"] = np.sqrt(df["dx"]**2 + df["dy"]**2)
+    df["Displacement"] = np.sqrt(df["dx"] ** 2 + df["dy"] ** 2)
 
     # 4. Drop rows with displacement above threshold
     df = df[df["Displacement"] <= distance_threshold]
@@ -315,7 +319,7 @@ def filter_and_reconstruct_coordinates(df, distance_threshold=2):
     # 5. Reconstruct coordinates
     df["X"] = df["dx"].cumsum() + start_x
     df["Y"] = df["dy"].cumsum() + start_y
-    
+
     # Drop intermediate columns
     df = df.drop(columns=["dx", "dy", "Displacement"])
 
@@ -335,7 +339,9 @@ def filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=2):
     """
     cleaned_segments = []
     for _, segment_df in df.groupby("Segment"):
-        cleaned_segments.append(filter_and_reconstruct_coordinates(segment_df, distance_threshold))
+        cleaned_segments.append(
+            filter_and_reconstruct_coordinates(segment_df, distance_threshold)
+        )
 
     if not cleaned_segments:
         return df
@@ -405,14 +411,21 @@ def normalize_coordinates(df):
     df["Y"] = (df["Y"] - df["Y"].min()) / (df["Y"].max() - df["Y"].min())
     return df
 
+
 def normalize_coordinates_and_speed(df):
     """
-    Applies Min-Max normalization (scaling to a 0-1 range) to the fixed 
+    Applies Min-Max normalization (scaling to a 0-1 range) to the fixed
     columns: 'X', 'Y', 'Speed', 'ComputedSpeed_frames', and 'ComputedSpeed_timestamp'.
     """
-    
-    columns_to_normalize = ['X', 'Y', 'Speed', 'ComputedSpeed_frames', 'ComputedSpeed_timestamp']
-    
+
+    columns_to_normalize = [
+        "X",
+        "Y",
+        "Speed",
+        "ComputedSpeed_frames",
+        "ComputedSpeed_timestamp",
+    ]
+
     df_normalized = df.copy()
 
     for column in columns_to_normalize:
@@ -428,13 +441,16 @@ def normalize_coordinates_and_speed(df):
 
         # Avoid division by zero
         if denominator == 0:
-            print(f"Note: Column '{column}' has a constant value. Setting normalized value to 0.")
+            print(
+                f"Note: Column '{column}' has a constant value. Setting normalized value to 0."
+            )
             df_normalized[column] = 0.0
         else:
             # Min-Max normalization formula: (X - min) / (max - min)
             df_normalized[column] = (df_normalized[column] - min_val) / denominator
 
     return df_normalized
+
 
 def add_computed_speed_columns(df):
     """
@@ -468,7 +484,9 @@ def add_computed_speed_columns(df):
     return df
 
 
-def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, distance_threshold=16):
+def preprocess_file(
+    file, frame_of_death, speed_cap=4, normalize_coords=False, distance_threshold=16
+):
     """
     Preprocess a single CSV file by applying various cleaning steps.
 
@@ -482,13 +500,15 @@ def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, d
     df = pd.read_csv(file)
     df = drop_frames_after_death(df, frame_of_death)
     # df = cap_speed(df, speed_cap=speed_cap) # original preprocessing
-    # df = remove_high_speed_outliers(df) # preprocessing 2 
+    # df = remove_high_speed_outliers(df) # preprocessing 2
     # df = remove_large_displacement_outliers(df, distance_threshold=2) # preprocessing 3
     # df = filter_and_transform_to_displacement(df, distance_threshold=2) # preprocessing 4
     # df = filter_and_reconstruct_coordinates(df, distance_threshold=2) # preprocessing 5
     # df = filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=2) # preprocessing 6
     # df = filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=20) # preprocessing 7
-    df = filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=distance_threshold) # final preprocessing
+    df = filter_and_reconstruct_coordinates_by_segment(
+        df, distance_threshold=distance_threshold
+    )  # final preprocessing
     cleaned_segments = []
     for segment_id, segment_df in df.groupby("Segment"):
         # segment_df = clean_segment_gaps(segment_df) # known useless for preprocessing 6+
@@ -506,7 +526,13 @@ def preprocess_file(file, frame_of_death, speed_cap=4, normalize_coords=False, d
 
 
 def process_all_files(
-    treatment, lifespan_summary, output_dir="preprocessed_data/", speed_cap=4, normalize_coords=False, specific_file=None, distance_threshold=16
+    treatment,
+    lifespan_summary,
+    output_dir="preprocessed_data/",
+    speed_cap=4,
+    normalize_coords=False,
+    specific_file=None,
+    distance_threshold=16,
 ):
     """
     Preprocess all CSV files in the specified treatment group.
@@ -560,71 +586,292 @@ def process_all_files(
         )
 
 
+def get_global_stats(input_dir, speed_column="ComputedSpeed_frames", window_size=150):
+    """
+    Iterates through ALL CSV files in input_dir to find:
+    1. Global Min/Max Speed.
+    2. 'Max Span': The maximum spatial area covered by a worm within a window of 'window_size',
+       calculated PER SEGMENT to avoid jumps between segments.
+    """
+    all_files = glob(os.path.join(input_dir, "**", "*.csv"), recursive=True)
+
+    min_speed, max_speed = float("inf"), float("-inf")
+    max_span = 0.0
+
+    print(f"Calculating global statistics on {len(all_files)} files...")
+
+    for file in tqdm.tqdm(all_files, desc="Global Stats"):
+        try:
+            df = pd.read_csv(file)
+            if df.empty or speed_column not in df.columns:
+                continue
+
+            # 1. Speed Stats (Safe to calculate on the whole dataframe)
+            min_speed = min(min_speed, df[speed_column].min())
+            max_speed = max(max_speed, df[speed_column].max())
+
+            # 2. Calculate 'Max Span' PER SEGMENT
+            # We must group by segment, otherwise the rolling window will calculate
+            # the distance between the end of Segment N and start of Segment N+1,
+            # which could be huge and incorrect.
+            for _, seg_df in df.groupby("Segment"):
+                if len(seg_df) < window_size:
+                    continue
+
+                # Calculate rolling min and max for X within the segment
+                rolling_max_x = seg_df["X"].rolling(window=window_size).max()
+                rolling_min_x = seg_df["X"].rolling(window=window_size).min()
+                span_x = (rolling_max_x - rolling_min_x).max()
+
+                # Calculate rolling min and max for Y within the segment
+                rolling_max_y = seg_df["Y"].rolling(window=window_size).max()
+                rolling_min_y = seg_df["Y"].rolling(window=window_size).min()
+                span_y = (rolling_max_y - rolling_min_y).max()
+
+                # Update global max_span if valid
+                local_max_span = max(span_x, span_y)
+                if not np.isnan(local_max_span):
+                    max_span = max(max_span, local_max_span)
+
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+
+    # Add a 10% safety margin
+    max_span = max_span * 1.1
+
+    return {"v_min": min_speed, "v_max": max_speed, "max_span": max_span}
+
+
+def create_multichannel_image(
+    clip_df,
+    global_stats,
+    output_path,
+    img_size=128,
+    speed_column="ComputedSpeed_frames",
+):
+    """
+    Creates a 3-channel tensor image using OpenCV with CENTERED ZOOM.
+
+    Channel 0 (Blue): Speed (Normalized globally)
+    Channel 1 (Green): Time (Normalized locally 0->255)
+    Channel 2 (Red): Path/Occupancy (Binary)
+    """
+    # 1. Initialize black image
+    image = np.zeros((img_size, img_size, 3), dtype=np.uint8)
+
+    # 2. Extract Data
+    x = clip_df["X"].values
+    y = clip_df["Y"].values
+    speed = clip_df[speed_column].values
+    num_points = len(x)
+
+    # --- CENTERING LOGIC ---
+    # Find the geometric center of THIS specific clip
+    center_x = (np.max(x) + np.min(x)) / 2
+    center_y = (np.max(y) + np.min(y)) / 2
+
+    # Retrieve the global max span (the zoom factor)
+    span = global_stats["max_span"]
+    if span == 0:
+        span = 1  # Avoid division by zero
+
+    # Mapping:
+    # 1. Center the coordinates around 0: (val - center)
+    # 2. Normalize by the global max span: / span
+    # 3. Scale to image size: * img_size
+    # 4. Shift to image center: + img_size / 2
+    x_pix = ((x - center_x) / span * img_size + img_size / 2).astype(int)
+    y_pix = ((y - center_y) / span * img_size + img_size / 2).astype(int)
+
+    # Clip coordinates to ensure they stay within image bounds
+    x_pix = np.clip(x_pix, 0, img_size - 1)
+    y_pix = np.clip(y_pix, 0, img_size - 1)
+
+    # 4. Normalize Speed (Global scale is kept for speed consistency)
+    speed_norm = (speed - global_stats["v_min"]) / (
+        global_stats["v_max"] - global_stats["v_min"]
+    )
+    speed_norm = np.clip(speed_norm, 0.0, 1.0) * 255
+
+    # 5. Draw Trajectory
+    for i in range(num_points - 1):
+        pt1 = (x_pix[i], y_pix[i])
+        pt2 = (x_pix[i + 1], y_pix[i + 1])
+
+        # Skip if points are identical (no movement)
+        if pt1 == pt2:
+            continue
+
+        # Channel 0 (Blue): SPEED (Average of two points)
+        val_speed = int((speed_norm[i] + speed_norm[i + 1]) / 2)
+
+        # Channel 1 (Green): TIME (Gradient 0->255)
+        val_time = int((i / num_points) * 255)
+
+        # Channel 2 (Red): PATH (Always 255)
+        val_path = 255
+
+        color = (val_speed, val_time, val_path)
+        cv2.line(image, pt1, pt2, color, thickness=2)
+
+    # 6. Save
+    cv2.imwrite(output_path, image)
+
+
+def preprocess_for_cnn(
+    input_dir="preprocessed_data",
+    output_dir="cnn_dataset",
+    window_size=150,
+    stride=75,
+    img_size=128,
+    speed_column="ComputedSpeed_frames",
+):
+    """
+    Main function for CNN dataset generation.
+    Iterates through each segment separately and uses 'window_size' to calculate global stats.
+    """
+
+    if not os.path.exists(input_dir) or not os.listdir(input_dir):
+        print(f"Error: Directory {input_dir} is empty. Cannot generate images.")
+        return
+
+    print("--- Step 1/2: Calculating global scales (Speed & Spatial Span) ---")
+    # PASS window_size to get_global_stats
+    global_stats = get_global_stats(input_dir, speed_column, window_size=window_size)
+    print("Global Stats found:", global_stats)
+
+    print(f"--- Step 2/2: Generating Multichannel Images ---")
+
+    files = glob(os.path.join(input_dir, "**", "*.csv"), recursive=True)
+    count_generated = 0
+
+    for file_path in tqdm.tqdm(files, desc="Processing Files"):
+        try:
+            df = pd.read_csv(file_path)
+
+            treatment_name = (
+                "TERBINAFINE+"
+                if df["Terbinafine"].iloc[0]
+                else "TERBINAFINE- (control)"
+            )
+            worm_id = df["WormID"].iloc[0]
+
+            save_dir = os.path.join(
+                output_dir, treatment_name, worm_id, "photos_trajectories"
+            )
+            os.makedirs(save_dir, exist_ok=True)
+
+            # Group by Segment to handle discontinuities
+            for segment_id, segment_df in df.groupby("Segment"):
+
+                segment_df = segment_df.reset_index(drop=True)
+                n_rows_seg = len(segment_df)
+
+                # Sliding window INSIDE the segment
+                for start_idx in range(0, n_rows_seg - window_size + 1, stride):
+                    end_idx = start_idx + window_size
+                    clip = segment_df.iloc[start_idx:end_idx].copy()
+
+                    # Check for NaNs
+                    cols_to_check = ["X", "Y", speed_column]
+                    if clip[cols_to_check].isnull().values.any():
+                        continue
+
+                    # Naming includes Segment ID
+                    img_name = f"seg_{segment_id}_frame_{start_idx}_to_{end_idx}.png"
+                    img_path = os.path.join(save_dir, img_name)
+
+                    create_multichannel_image(
+                        clip, global_stats, img_path, img_size, speed_column
+                    )
+                    count_generated += 1
+
+        except Exception as e:
+            print(f"Error processing file {file_path}: {e}")
+
+    print(f"Done! {count_generated} images generated.")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Process files with options.")
+    parser.add_argument("--speed-cap", type=float, default=4, help="Max speed cap.")
     parser.add_argument(
-        "--speed-cap",
-        type=float,
-        default=4,
-        help="Maximum speed value to cap at (default: 4).",
+        "--distance-threshold", type=float, default=16, help="Distance threshold."
     )
     parser.add_argument(
-        "--distance-threshold",
-        type=float,
-        default=16,
-        help="Distance threshold for coordinate reconstruction (default: 16).",
+        "--output-dir", type=str, default="preprocessed_data/", help="Output for CSVs."
     )
     parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="preprocessed_data/",
-        help="Directory to save preprocessed files (default: preprocessed_data/).",
+        "--cnn-output-dir", type=str, default="cnn_dataset/", help="Output for Images."
     )
     parser.add_argument(
-        "--normalize",
-        action="store_true",
-        help="Do normalize coordinates.",
+        "--normalize", action="store_true", help="Normalize coordinates in CSV."
     )
-    parser.add_argument(
-        "--no-normalize",
-        dest="normalize",
-        action="store_false",
-        help="Do not normalize coordinates.",
-    )
-    parser.add_argument(
-        "--file",
-        type=str,
-        help="Specific file to process (basename).",
-    )
-    parser.set_defaults(normalize=False)
+    parser.add_argument("--file", type=str, help="Specific file.")
 
+    # Arguments for flow control
+    parser.add_argument(
+        "--generate-images",
+        action="store_true",
+        help="Generate images for CNN after CSV processing.",
+    )
+    parser.add_argument(
+        "--only-cnn",
+        action="store_true",
+        help="Skip CSV preprocessing and ONLY generate CNN images.",
+    )
+
+    parser.set_defaults(normalize=False)
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
 
-    lifespan_summary = pd.read_csv("data/lifespan_summary.csv")
+    CONTROL = "TERBINAFINE- (control)"
+    TREATED = "TERBINAFINE+"
 
-    process_all_files(
-        CONTROL,
-        lifespan_summary,
-        output_dir=args.output_dir,
-        speed_cap=args.speed_cap,
-        normalize_coords=args.normalize,
-        specific_file=args.file,
-        distance_threshold=args.distance_threshold,
-    )
+    # 1. CSV Preprocessing Step
+    # Run only if NOT in 'only-cnn' mode
+    if not args.only_cnn:
+        if os.path.exists("data/lifespan_summary.csv"):
+            lifespan_summary = pd.read_csv("data/lifespan_summary.csv")
 
-    print("------ Processing 2nd group ------")
+            print("------ CSV Processing: Control Group ------")
+            process_all_files(
+                CONTROL,
+                lifespan_summary,
+                output_dir=args.output_dir,
+                speed_cap=args.speed_cap,
+                normalize_coords=args.normalize,
+                specific_file=args.file,
+                distance_threshold=args.distance_threshold,
+            )
 
-    process_all_files(
-        TREATED,
-        lifespan_summary,
-        output_dir=args.output_dir,
-        speed_cap=args.speed_cap,
-        normalize_coords=args.normalize,
-        specific_file=args.file,
-        distance_threshold=args.distance_threshold,
-    )
-    print("Preprocessing completed.")
+            print("------ CSV Processing: Treated Group ------")
+            process_all_files(
+                TREATED,
+                lifespan_summary,
+                output_dir=args.output_dir,
+                speed_cap=args.speed_cap,
+                normalize_coords=args.normalize,
+                specific_file=args.file,
+                distance_threshold=args.distance_threshold,
+            )
+        else:
+            print("Warning: 'data/lifespan_summary.csv' not found.")
+    else:
+        print("Skipping CSV Preprocessing (--only-cnn active)...")
+
+    # 2. Image Generation Step
+    # Run if explicitly requested OR if 'only-cnn' is active
+    if args.generate_images or args.only_cnn:
+        print("\n------ Starting image generation for CNN ------")
+        preprocess_for_cnn(
+            input_dir=args.output_dir,
+            output_dir=args.cnn_output_dir,
+            window_size=300,
+            stride=150,
+            img_size=128,
+            speed_column="ComputedSpeed_frames",
+        )
