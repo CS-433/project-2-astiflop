@@ -1,9 +1,9 @@
-# Classification of C. elegans Longevity under Terbinafine Treatment
+# Classification of C. elegans under Terbinafine Treatment
 
 ## Project Overview
 This project focuses on the automated classification of *Caenorhabditis elegans* (*C. elegans*) nematodes based on their longevity phenotypes. Specifically, we aim to distinguish between worms treated with **Terbinafine** (Terbinafine+) and untreated control worms (Terbinafine-).
 
-Terbinafine helps extending the lifespan of *C. elegans*. By analyzing movement trajectories and derived features, we investigate whether machine learning models can accurately predict the treatment group (and thus the longevity potential) from behavioral data.
+Terbinafine helps extending the lifespan of *C. elegans*. By analyzing movement trajectories and derived features, we investigate whether machine learning models can accurately predict the treatment group from behavioral data.
 
 A key objective of this project was to adopt a **featureless approach** as much as possible. Instead of relying heavily on handcrafted biological metrics, we prioritized methods (such as ROCKET, Tail-MIL, and CNNs) that learn directly from raw data representations, minimizing the bias introduced by manual feature selection.
 
@@ -54,7 +54,7 @@ We then converted these time-series coordinates $(x, t)$ into 3-channel images (
 **Example of Generated Input:**
 ![Trajectory Example](/results/seg_6_frame_150_to_450.png)
 
-This encoding allows the CNN (e.g., ResNet) to learn complex patterns like "slowing down while turning" or "looping behavior" that scalar features might miss.
+This encoding might allows the CNN (e.g., ResNet) to learn complex patterns like "slowing down while turning" or "looping behavior" that scalar features might miss.
 
 ---
 
