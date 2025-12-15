@@ -25,7 +25,7 @@ def train_models(
     models: dict,
     model_params: dict = None,
     pytorch_dir="preprocessed_data/",
-    use_augmented_data=False,
+    augmented_data=None,
     prod=False,
 ):
     # Create a results dictionary to store metrics for each model
@@ -41,9 +41,10 @@ def train_models(
     dataset = UnifiedCElegansDataset(
         pytorch_dir=pytorch_dir,
         sklearn_dir="preprocessed_data_for_classifier/",
-    ) if not use_augmented_data else UnifiedCElegansAugmentedDataset(
+    ) if not augmented_data else UnifiedCElegansAugmentedDataset(
         pytorch_dir=pytorch_dir,
         sklearn_dir="preprocessed_data_for_classifier/",
+        augmentations_per_sample=augmented_data,
     )
     if any(m.startswith("rocket") for m in models):
         X_rocket, y_rocket, worm_ids_rocket = dataset.get_data_for_rocket()
@@ -212,7 +213,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train and evaluate models.")
     parser.add_argument("--plot", action="store_true", help="Plot average results")
     parser.add_argument("--pytorch_dir", "-d", type=str, default="preprocessed_data/", help="Path to PyTorch preprocessed data directory")
-    parser.add_argument("--augmented_data", "-a", action="store_true", help="Use augmented data for training")
+    parser.add_argument("--augmented_data", "-a", nargs='?', const=5, type=int, default=None, help="Use augmented data for training. If specified without value, defaults to 5.")
     parser.add_argument("--output_json", "-o", type=str, default="avg_results", help="Output JSON file for average results")
     parser.add_argument("--prod", action="store_true", help="Run in production mode (save best model)")
     args = parser.parse_args()
@@ -257,7 +258,7 @@ if __name__ == "__main__":
         models_to_run,
         model_params,
         pytorch_dir=args.pytorch_dir,
-        use_augmented_data=args.augmented_data,
+        augmented_data=args.augmented_data,
         prod=args.prod,
     )
 

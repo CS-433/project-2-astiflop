@@ -214,17 +214,16 @@ class UnifiedCElegansAugmentedDataset(UnifiedCElegansDataset):
     This dataset augments each sample by creating modified versions of them.
     Each sample has the following augmentations:
         - Original
-        - 3 Trajectories rotated by a random angle
-        - Trajectories with a random offset added to X and Y coordinates
-        - Trajectories scaled by a random factor between 0.8 and 1.2 (arbitrary choice)
-    The resulting dataset is 6 times larger than the original.
+        - Random augmentations (Rotation, Offset, Scale) applied with p=0.5 each
+    The resulting dataset size depends on augmentations_per_sample.
     All augmentations are computed and stored in memory at initialization.
     """
 
     def __init__(
-        self, pytorch_dir=None, sklearn_dir=None, max_segments=150, segment_len=900
+        self, pytorch_dir=None, sklearn_dir=None, max_segments=150, segment_len=900, augmentations_per_sample=5
     ):
         super().__init__(pytorch_dir, sklearn_dir, max_segments, segment_len)
+        self.augmentations_per_sample = augmentations_per_sample
 
         # Identify feature indices
         self.x_idx = -1
@@ -257,61 +256,56 @@ class UnifiedCElegansAugmentedDataset(UnifiedCElegansDataset):
 
             # Apply augmentations if X and Y are present
             if self.x_idx != -1 and self.y_idx != -1:
-                X = original_tensor[:, self.x_idx, :]
-                Y = original_tensor[:, self.y_idx, :]
+                for _ in range(self.augmentations_per_sample):
+                    augmented_tensor = original_tensor.clone()
+                    
+                    # Apply rotation with p=0.5
+                    if np.random.rand() < 0.5:
+                        augmented_tensor = self._apply_rotation(augmented_tensor)
+                    
+                    # Apply offset with p=0.5
+                    if np.random.rand() < 0.5:
+                        augmented_tensor = self._apply_offset(augmented_tensor)
+                        
+                    # Apply scaling with p=0.5
+                    if np.random.rand() < 0.5:
+                        augmented_tensor = self._apply_scaling(augmented_tensor)
+                        
+                    self.augmented_data.append(augmented_tensor)
+                    self.augmented_labels.append(label)
+                    self.augmented_worm_ids.append(worm_id)
 
-                # 2. Rotate by a random angle
-                theta = np.radians(np.random.uniform(0, 360))
-                c, s = np.cos(theta), np.sin(theta)
-                tens_45 = original_tensor.clone()
-                tens_45[:, self.x_idx, :] = X * c - Y * s
-                tens_45[:, self.y_idx, :] = X * s + Y * c
-                self.augmented_data.append(tens_45)
-                self.augmented_labels.append(label)
-                self.augmented_worm_ids.append(worm_id)
+    def _apply_rotation(self, tensor):
+        theta = np.radians(np.random.uniform(0, 360))
+        c, s = np.cos(theta), np.sin(theta)
+        
+        X = tensor[:, self.x_idx, :]
+        Y = tensor[:, self.y_idx, :]
+        
+        new_tensor = tensor.clone()
+        new_tensor[:, self.x_idx, :] = X * c - Y * s
+        new_tensor[:, self.y_idx, :] = X * s + Y * c
+        return new_tensor
 
-                # 3. Rotate by a random angle
-                theta = np.radians(np.random.uniform(0, 360))
-                c, s = np.cos(theta), np.sin(theta)
-                tens_45 = original_tensor.clone()
-                tens_45[:, self.x_idx, :] = X * c - Y * s
-                tens_45[:, self.y_idx, :] = X * s + Y * c
-                self.augmented_data.append(tens_45)
-                self.augmented_labels.append(label)
-                self.augmented_worm_ids.append(worm_id)
+    def _apply_offset(self, tensor):
+        dx = np.random.uniform(-50, 50)
+        dy = np.random.uniform(-50, 50)
+        
+        new_tensor = tensor.clone()
+        # Mask for padding (assuming 0 padding)
+        mask = new_tensor.abs().sum(dim=1) > 1e-6
+        new_tensor[:, self.x_idx, :][mask] += dx
+        new_tensor[:, self.y_idx, :][mask] += dy
+        return new_tensor
 
-                # 4. Rotate by a random angle
-                theta = np.radians(np.random.uniform(0, 360))
-                c, s = np.cos(theta), np.sin(theta)
-                tens_45 = original_tensor.clone()
-                tens_45[:, self.x_idx, :] = X * c - Y * s
-                tens_45[:, self.y_idx, :] = X * s + Y * c
-                self.augmented_data.append(tens_45)
-                self.augmented_labels.append(label)
-                self.augmented_worm_ids.append(worm_id)
-
-                # 5. Random offset
-                dx = np.random.uniform(-50, 50)
-                dy = np.random.uniform(-50, 50)
-                tens_offset = original_tensor.clone()
-                # Mask for padding (assuming 0 padding)
-                mask = tens_offset.abs().sum(dim=1) > 1e-6
-                tens_offset[:, self.x_idx, :][mask] += dx
-                tens_offset[:, self.y_idx, :][mask] += dy
-                self.augmented_data.append(tens_offset)
-                self.augmented_labels.append(label)
-                self.augmented_worm_ids.append(worm_id)
-
-                # 6. Scale
-                scale = np.random.uniform(0.8, 1.2)
-                tens_scale = original_tensor.clone()
-                tens_scale[:, self.x_idx, :] *= scale
-                tens_scale[:, self.y_idx, :] *= scale
-                if self.speed_idx != -1:
-                    tens_scale[:, self.speed_idx, :] *= scale
-                self.augmented_data.append(tens_scale)
-                self.augmented_labels.append(label)
-                self.augmented_worm_ids.append(worm_id)
+    def _apply_scaling(self, tensor):
+        scale = np.random.uniform(0.8, 1.2)
+        new_tensor = tensor.clone()
+        new_tensor[:, self.x_idx, :] *= scale
+        new_tensor[:, self.y_idx, :] *= scale
+        if self.speed_idx != -1:
+            new_tensor[:, self.speed_idx, :] *= scale
+        return new_tensor
 
     def get_data_for_rocket(self, feature_cols=None):
         """
