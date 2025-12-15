@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import os
 import argparse
-import matplotlib.pyplot as plt
 import cv2
 from glob import glob
 

@@ -5,6 +5,8 @@ import numpy as np
 import os
 from glob import glob
 from tqdm import tqdm
+import cv2
+import torchvision.transforms as transforms
 
 # Load the env variables
 from dotenv import load_dotenv
@@ -323,13 +325,15 @@ class UnifiedCElegansAugmentedDataset(UnifiedCElegansDataset):
         X = []
         y = []
         ids = []
-        
-        for tensor, label, worm_id in zip(self.augmented_data, self.augmented_labels, self.augmented_worm_ids):
+
+        for tensor, label, worm_id in zip(
+            self.augmented_data, self.augmented_labels, self.augmented_worm_ids
+        ):
             flat_ts = tensor.permute(1, 0, 2).reshape(tensor.shape[1], -1).numpy()
             X.append(flat_ts)
             y.append(label.item())
             ids.append(worm_id)
-            
+
         return np.array(X), np.array(y), np.array(ids)
 
     def get_data_for_sklearn(self, feature_cols=None):
@@ -337,22 +341,26 @@ class UnifiedCElegansAugmentedDataset(UnifiedCElegansDataset):
         Returns the augmented data for Sklearn.
         Since we cannot easily compute the scalar features (Age, Tortuosity, etc.) for the augmented data,
         we return the flattened raw trajectories.
-        
+
         Shape: (n_samples, n_channels * max_segments * segment_len)
         """
-        print("Loading augmented data for Sklearn from memory (Flattened Trajectories)...")
+        print(
+            "Loading augmented data for Sklearn from memory (Flattened Trajectories)..."
+        )
         X = []
         y = []
         ids = []
-        
-        for tensor, label, worm_id in zip(self.augmented_data, self.augmented_labels, self.augmented_worm_ids):
+
+        for tensor, label, worm_id in zip(
+            self.augmented_data, self.augmented_labels, self.augmented_worm_ids
+        ):
             # tensor: (max_segments, n_channels, segment_len)
             # Flatten completely
             flat_features = tensor.numpy().flatten()
             X.append(flat_features)
             y.append(label.item())
             ids.append(worm_id)
-            
+
         return np.array(X), np.array(y), np.array(ids)
 
     def get_worm_ids_for_pytorch(self):
@@ -363,3 +371,51 @@ class UnifiedCElegansAugmentedDataset(UnifiedCElegansDataset):
 
     def __getitem__(self, idx):
         return self.augmented_data[idx], self.augmented_labels[idx]
+
+
+class CElegansCNNDataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
+        self.transform = transform
+        self.samples = []
+
+        self.class_map = {"TERBINAFINE- (control)": 0, "TERBINAFINE+": 1}
+        self._load_samples()
+
+    def _load_samples(self):
+        for treatment_name, label in self.class_map.items():
+            treatment_path = os.path.join(self.root_dir, treatment_name)
+            if not os.path.exists(treatment_path):
+                print(f"Warning: Path not found: {treatment_path}")
+                continue
+            worm_dirs = [
+                d
+                for d in os.listdir(treatment_path)
+                if os.path.isdir(os.path.join(treatment_path, d))
+            ]
+            for worm_id in worm_dirs:
+                img_dir = os.path.join(treatment_path, worm_id, "photos_trajectories")
+                if not os.path.exists(img_dir):
+                    continue
+                images = glob(os.path.join(img_dir, "*.png"))
+                for img_path in images:
+                    self.samples.append((img_path, label, worm_id))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        img_path, label, worm_id = self.samples[idx]
+        image = cv2.imread(img_path)
+        if image is None:
+            raise ValueError(f"Failed to load image: {img_path}")
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = transforms.ToPILImage()(image)
+        if self.transform:
+            image = self.transform(image)
+        return image, torch.tensor(label, dtype=torch.float32), worm_id
+
+    def get_indices_labels_groups(self):
+        labels = [s[1] for s in self.samples]
+        groups = [s[2] for s in self.samples]
+        return np.arange(len(self.samples)), np.array(labels), np.array(groups)

@@ -1,6 +1,5 @@
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from .base import worm_level_aggregation, compute_metrics
@@ -22,7 +21,7 @@ def LogisticRegModel(
     steps = []
     if lr_params["use_scaler"]:
         steps.append(StandardScaler())
-    
+
     # Remove use_scaler from params before passing to LogisticRegression
     lr_kwargs = {k: v for k, v in lr_params.items() if k != "use_scaler"}
     steps.append(LogisticRegression(**lr_kwargs))
