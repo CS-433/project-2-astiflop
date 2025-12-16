@@ -20,19 +20,17 @@ The raw data consists of movement trajectories tracked over the worms' lifespans
 
 ### 2. Trajectory Reconstruction & Smoothing
 **Objective**: Fix tracking "jumps" where the camera lost the worm or swapped identity, causing unrealistic displacements.
-1.  **Speed Cap & Outlier Removal**: We identified instances of impossible acceleration (e.g., speed > 4). These are caused by tracking errors.
-2.  **Displacement Thresholding**: We removed frames where the sudden displacement exceeded a biological threshold (e.g., > 16 pixels/frame).
-3.  **Coordinate Reconstruction**: When gaps or jumps were removed, the worm's trajectory was stitched back together (cumulative summation of valid displacements) to recreate a continuous, biologically plausible path.
+1.  **Displacement Thresholding**: We removed frames where the sudden displacement exceeded a biological threshold (e.g., > 16 pixels/frame), that are caused by tracking errors.
+2.  **Coordinate Reconstruction**: When gaps or jumps were removed, the worm's trajectory was stitched back together (cumulative summation of valid displacements) to recreate a continuous, biologically plausible path.
 
 ### 3. Segmentation
 **Objective**: Handle the variable lifespan of worms.
 - Tracks were divided into fixed-length **segments** (e.g., 900 frames). This standardizes the input for models that process sequential data and allows us to analyze behavior at different life stages.
 
-### 4. Feature Extraction (Tabular Models)
-For models like Logistic Regression, Random Forest, and SVM, we extracted scalar features per segment to capture behavioral dynamics:
-- **Mean & Median Speed**: Proxies for general activity levels.
-- **Net Displacement**: Distance between start and end points of a segment.
-- **Tortuosity**: Ratio of total path length to net displacement. High tortuosity indicates "searching" behavior (frequent turning), while low tortuosity indicates "roaming" behavior.
+### 4. Derived Metrics & Consistency
+**Objective**: Ensure feature consistency after trajectory repair.
+1.  **Speed Recomputation**: Since coordinate reconstruction modifies the path, we recalculate the instantaneous speed (`ComputedSpeed`) from the new coordinates to ensure it matches the visual trajectory.
+2.  **Turning Rate & Noise Filtering**: We calculate the instantaneous turning rate (change in heading). To prevent sensor noise from being interpreted as movement, we force the turning rate to 0 whenever the worm is stationary (speed < 0.05).
 
 ---
 
@@ -41,7 +39,7 @@ For models like Logistic Regression, Random Forest, and SVM, we extracted scalar
 For the Convolutional Neural Network (CNN) approach, we treated the trajectory classification as a computer vision problem. Instead of scalar features, we generated **visual representations** of the worm's movement.
 
 ### Multichannel Trajectory Imaging (@Windowing Strategy)
-**Windowing Strategy**: although the tabular models use full 900-frame segments, for the CNN we further slice these segments into smaller **clips of 150 frames** (with a stride of 75).
+**Windowing Strategy**: although the tabular models use full 900-frame segments, for the CNN we further slice these segments into smaller **clips of 300 frames** (with a stride of 150).
 - This allows us to filter out clips containing `NaNs` (gaps) without discarding the entire segment.
 - It focuses the network on shorter, more detailed movement patterns.
 
