@@ -241,124 +241,131 @@ def compute_stats(dataset, indices, batch_size=32):
     return mean, std
 
 
-def TailMilModel(
-    dataset,
-    train_indices,
-    test_indices,
-    batch_size=8,
-    lr=1e-4,
-    embed_dim=64,
-    epochs=100,
-    patience=10,
-    threshold=0.5,
-    use_scaler=False,
-    device="cuda" if torch.cuda.is_available() else "cpu",
-):
-    if use_scaler:
-        mean, std = compute_stats(dataset, train_indices, batch_size=batch_size)
-        print(f"Computed feature means: {mean}, stds: {std}")
-        
-        train_subset = ScaledDataset(Subset(dataset, train_indices), mean, std)
-        test_subset = ScaledDataset(Subset(dataset, test_indices), mean, std)
+from .base import BaseModel
 
-        ############# DEBUG
-        # Compute class balance in scaled datasets
-        # train_labels = [y for _, y in train_subset]
-        # test_labels = [y for _, y in test_subset]
-        # print(f"Train set class balance (scaled): {np.bincount(train_labels)}")
-        # print(f"Test set class balance (scaled): {np.bincount(test_labels)}")
-        # exit(0)
-        #############
-        
-        train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
-        test_loader = DataLoader(test_subset, batch_size=batch_size, shuffle=False)
-    else:
-        mean, std = None, None
-        train_loader = DataLoader(
-            Subset(dataset, train_indices), batch_size=batch_size, shuffle=True
-        )
-        test_loader = DataLoader(
-            Subset(dataset, test_indices), batch_size=batch_size, shuffle=False
-        )
+class TailMilWrapper(BaseModel):
+    def load_data(self, dataset):
+        self.dataset = dataset
+        self.worm_ids = dataset.get_worm_ids_for_pytorch()
+        # Map worm IDs to indices
+        self.worm_id_to_indices = {}
+        for idx, wid in enumerate(self.worm_ids):
+            if wid not in self.worm_id_to_indices:
+                self.worm_id_to_indices[wid] = []
+            self.worm_id_to_indices[wid].append(idx)
 
-    model = TAIL_MIL(
-        segment_len=dataset.segment_len, embed_dim=embed_dim
-    ).to(device)
-    model.mean = mean
-    model.std = std
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = torch.nn.BCELoss()
+    def run_fold(self, train_worm_ids, test_worm_ids):
+        if self.dataset is None:
+            raise ValueError("Data not loaded. Call load_data() first.")
 
-    best_val_acc = -float("inf")
-    best_val_f1 = 0
-    best_val_auc = 0
-    best_val_prec = 0
-    best_val_rec = 0
-    epochs_no_improve = 0
-    best_model_state = None
+        train_indices = []
+        for wid in train_worm_ids:
+            if wid in self.worm_id_to_indices:
+                train_indices.extend(self.worm_id_to_indices[wid])
 
-    for epoch in tqdm(range(epochs), desc="Training TAIL-MIL"):
-        model.train()
-        train_loss = 0.0
-        for X, y in train_loader:
-            X, y = X.to(device), y.to(device).float()
-            preds, _, _ = model(X)
-            preds = preds.squeeze()
-            loss = criterion(preds, y)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-        avg_train_loss = train_loss / len(train_loader)
-        # Validation
-        model.eval()
-        val_labels = []
-        val_preds = []
-        with torch.no_grad():
-            for X, y in test_loader:
-                X, y = X.to(device), y.to(device)
+        test_indices = []
+        for wid in test_worm_ids:
+            if wid in self.worm_id_to_indices:
+                test_indices.extend(self.worm_id_to_indices[wid])
+
+        batch_size = self.params.get("batch_size", 8)
+        lr = self.params.get("lr", 1e-4)
+        embed_dim = self.params.get("embed_dim", 64)
+        epochs = self.params.get("epochs", 100)
+        patience = self.params.get("patience", 10)
+        threshold = self.params.get("threshold", 0.5)
+        use_scaler = self.params.get("use_scaler", False)
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+
+        if use_scaler:
+            mean, std = compute_stats(self.dataset, train_indices, batch_size=batch_size)
+            print(f"Computed feature means: {mean}, stds: {std}")
+            
+            train_subset = ScaledDataset(Subset(self.dataset, train_indices), mean, std)
+            test_subset = ScaledDataset(Subset(self.dataset, test_indices), mean, std)
+            
+            train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+            test_loader = DataLoader(test_subset, batch_size=batch_size, shuffle=False)
+        else:
+            mean, std = None, None
+            train_loader = DataLoader(
+                Subset(self.dataset, train_indices), batch_size=batch_size, shuffle=True
+            )
+            test_loader = DataLoader(
+                Subset(self.dataset, test_indices), batch_size=batch_size, shuffle=False
+            )
+
+        model = TAIL_MIL(
+            segment_len=self.dataset.segment_len, embed_dim=embed_dim
+        ).to(device)
+        model.mean = mean
+        model.std = std
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        criterion = torch.nn.BCELoss()
+
+        best_val_acc = -float("inf")
+        best_val_f1 = 0
+        best_val_auc = 0
+        best_val_prec = 0
+        best_val_rec = 0
+        epochs_no_improve = 0
+        best_model_state = None
+
+        for epoch in tqdm(range(epochs), desc="Training TAIL-MIL"):
+            model.train()
+            train_loss = 0.0
+            for X, y in train_loader:
+                X, y = X.to(device), y.to(device).float()
                 preds, _, _ = model(X)
                 preds = preds.squeeze()
-                val_labels.extend(y.cpu().numpy())
-                val_preds.extend(preds.cpu().numpy())
+                loss = criterion(preds, y)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                train_loss += loss.item()
+            avg_train_loss = train_loss / len(train_loader)
+            # Validation
+            model.eval()
+            val_labels = []
+            val_preds = []
+            with torch.no_grad():
+                for X, y in test_loader:
+                    X, y = X.to(device), y.to(device)
+                    preds, _, _ = model(X)
+                    preds = preds.squeeze()
+                    val_labels.extend(y.cpu().numpy())
+                    val_preds.extend(preds.cpu().numpy())
 
-        val_preds_binary = (np.array(val_preds) > threshold).astype(int)
-        val_acc = accuracy_score(val_labels, val_preds_binary)
-        val_f1 = f1_score(val_labels, val_preds_binary)
-        val_prec = precision_score(val_labels, val_preds_binary, zero_division=0)
-        val_rec = recall_score(val_labels, val_preds_binary, zero_division=0)
-        try:
-            val_auc = roc_auc_score(val_labels, val_preds)
-        except:
-            val_auc = 0.5
+            val_preds_binary = (np.array(val_preds) > threshold).astype(int)
+            val_acc = accuracy_score(val_labels, val_preds_binary)
+            val_f1 = f1_score(val_labels, val_preds_binary)
+            val_prec = precision_score(val_labels, val_preds_binary, zero_division=0)
+            val_rec = recall_score(val_labels, val_preds_binary, zero_division=0)
+            try:
+                val_auc = roc_auc_score(val_labels, val_preds)
+            except:
+                val_auc = 0.5
 
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            best_val_f1 = val_f1
-            best_val_prec = val_prec
-            best_val_rec = val_rec
-            best_val_auc = val_auc
-            epochs_no_improve = 0
-            best_model_state = model.state_dict()
-        else:
-            epochs_no_improve += 1
-        
-        # Summary of epoch:
-        tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}. Patience: {epochs_no_improve}/{patience} {"<- Best" if epochs_no_improve==0 else ""}")
-        
-        # Early stopping
-        if epochs_no_improve >= patience:
-            break
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                best_val_f1 = val_f1
+                best_val_prec = val_prec
+                best_val_rec = val_rec
+                best_val_auc = val_auc
+                epochs_no_improve = 0
+                best_model_state = model.state_dict()
+            else:
+                epochs_no_improve += 1
+            
+            # Summary of epoch:
+            tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else ''}")
+            
+            # Early stopping
+            if epochs_no_improve >= patience:
+                break
 
-    # print("\n=== Train/Test Summary ===")
-    # print(f"Val Acc: {best_val_acc:.4f}")
-    # print(f"Val Prec: {best_val_prec:.4f}")
-    # print(f"Val Rec: {best_val_rec:.4f}")
-    # print(f"Val F1: {best_val_f1:.4f}")
-    # print(f"Val AUC: {best_val_auc:.4f}")
+        if best_model_state is not None:
+            model.load_state_dict(best_model_state)
 
-    if best_model_state is not None:
-        model.load_state_dict(best_model_state)
-
-    return best_val_acc, best_val_prec, best_val_rec, best_val_f1, model
+        return best_val_acc, best_val_prec, best_val_rec, best_val_f1, model

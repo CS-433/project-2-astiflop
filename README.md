@@ -77,23 +77,25 @@ We implemented two distinct pipelines to robustly evaluate different modeling ap
 ### 1. Main Pipeline (`main_pipeline.py`)
 This pipeline handles traditional Machine Learning models and Time Series classifiers.
 - **Models Supported**: Logistic Regression, Random Forest, SVM, XGBoost, and Time Series models like ROCKET and Tail-MIL.
+- **Architecture**: The pipeline is designed to be model-agnostic. All models inherit from a `BaseModel` abstract class, ensuring a consistent interface for data loading (`load_data`) and execution (`run_fold`).
 - **Data Augmentation**: To improve model robustness (avoid overfitting on the dataset's characteristics), we implemented a `UnifiedCElegansAugmentedDataset` that expands the training data with the following transforms:
     - **Rotations**: Random rotations on the X and Y axis.
     - **Translation**: Random X/Y offsets.
     - **Scaling**: Random scaling (0.8x to 1.2x) of all variates.
 - **Workflow**:
-    1.  Loads preprocessed tabular data (or raw time-series for ROCKET).
-    2.  Performs **Stratified Group K-Fold Cross-Validation** (ensuring all segments of one worm stay in the same fold prevent leakage).
-    3.  Training, Validation, and Metric reporting (Accuracy, F1, Precision, Recall).
+    1.  Loads the unified dataset.
+    1.  Initializes models and loads their specific data requirements.
+    1.  Performs **Stratified Group K-Fold Cross-Validation** (ensuring all segments of one worm stay in the same fold prevent leakage).
+    1.  Training, Validation, and Metric reporting (Accuracy, F1, Precision, Recall).
 
 ### 2. CNN Pipeline (`cnn_pipeline.py`)
 A dedicated pipeline for Deep Learning models processing the image datasets.
 - **Models Supported**: ResNet18, ResNet50, DenseNet121.
 - **Workflow**:
     1.  **Custom Dataset Class (`CElegansCNNDataset`)**: Loads images and extracts labels/worm IDs.
-    2.  **Augmentation**: Applies random rotations, flips, and normalization to improve generalization.
-    3.  **Training Loop**: Runs a PyTorch training loop with Stratified Group K-Fold.
-    4.  **Comparison**: Automatically plots and compares the performance of different architectures.
+    1.  **Augmentation**: Applies random rotations, flips, and normalization to improve generalization.
+    1.  **Training Loop**: Runs a PyTorch training loop with Stratified Group K-Fold.
+    1.  **Comparison**: Automatically plots and compares the performance of different architectures.
 
 ---
 
@@ -104,6 +106,7 @@ A dedicated pipeline for Deep Learning models processing the image datasets.
 ├── cnn_dataset/               # Generated dataset for CNNs
 ├── data/                      # Raw data and summary files
 ├── models/                    # Model definitions
+│   ├── base.py                # Abstract base class for models
 │   ├── model_cnn.py           # CNN factory (ResNet, DenseNet)
 │   ├── model_lr.py            # Logistic Regression wrapper
 │   └── ...                    # Other model wrappers

@@ -2,18 +2,23 @@ import numpy as np
 import argparse
 import joblib
 import torch
+import sys
+import os
+
+# Add the parent directory to sys.path to allow imports from utils and models
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.train_utils.dataset import (
     UnifiedCElegansAugmentedDataset,
     UnifiedCElegansDataset,
 )
 from utils.train_utils.fold_utils import get_stratified_worm_splits
-from models.model_lr import LogisticRegModel
-from models.model_rocket import RocketModel
-from models.model_rf import RandomForestModel
-from models.model_xgboost import XGBoostModel
-from models.model_svm import SVMModel
-from models.model_tail_mil import TailMilModel, ScaledDataset
+from models.model_lr import LogisticRegWrapper
+from models.model_rocket import RocketWrapper
+from models.model_rf import RandomForestWrapper
+from models.model_xgboost import XGBoostWrapper
+from models.model_svm import SVMWrapper
+from models.model_tail_mil import TailMilWrapper, ScaledDataset
 from utils.plot_utils.presents_results import (
     plot_results,
     save_results_to_json,
@@ -23,23 +28,19 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
-    precision_score,
-    recall_score,
-    roc_auc_score,
 )
 import warnings
 
 
 def train_models(
-    models: dict,
-    model_params: dict = None,
+    models_config: dict,
     pytorch_dir="preprocessed_data/",
     augmented_data=None,
     prod=False,
 ):
     # Create a results dictionary to store metrics for each model
     models_results = {}
-    for model_name, _ in models.items():
+    for model_name in models_config:
         models_results[model_name] = {}
 
     best_overall_f1 = -1
@@ -59,20 +60,16 @@ def train_models(
             augmentations_per_sample=augmented_data,
         )
     )
-    if any(m.startswith("rocket") for m in models):
-        X_rocket, y_rocket, worm_ids_rocket = dataset.get_data_for_rocket()
-    if any(m in models for m in ["logReg", "rf", "xgboost", "svm"]):
-        X_sklearn, y_sklearn, worm_ids_sklearn = dataset.get_data_for_sklearn()
 
-    # Prepare data for TailMil (PyTorch)
-    if any(m.startswith("tail_mil") for m in models):
-        worm_ids_pytorch = dataset.get_worm_ids_for_pytorch()
-        # Handle 1-to-many mapping (for augmented dataset)
-        worm_id_to_indices = {}
-        for idx, wid in enumerate(worm_ids_pytorch):
-            if wid not in worm_id_to_indices:
-                worm_id_to_indices[wid] = []
-            worm_id_to_indices[wid].append(idx)
+    # Instantiate models and load data
+    model_instances = {}
+    for model_name, config in models_config.items():
+        print(f"Initializing {model_name}...")
+        model_cls = config["model_class"]
+        params = config.get("params", {})
+        model = model_cls(params)
+        model.load_data(dataset)
+        model_instances[model_name] = model
 
     # Load dataset summary for stratified splits
     summary_csv_path = "data/lifespan_summary.csv"
@@ -84,71 +81,12 @@ def train_models(
         worm_train_indices = fold["train"]
         worm_test_indices = fold["val"]
 
-        # Filter Rocket Data
-        if any(m.startswith("rocket") for m in models):
-            train_mask_rocket = np.isin(worm_ids_rocket, worm_train_indices)
-            test_mask_rocket = np.isin(worm_ids_rocket, worm_test_indices)
-
-            X_train_rocket = X_rocket[train_mask_rocket]
-            y_train_rocket = y_rocket[train_mask_rocket]
-
-            X_test_rocket = X_rocket[test_mask_rocket]
-            y_test_rocket = y_rocket[test_mask_rocket]
-            worm_ids_test_rocket = worm_ids_rocket[test_mask_rocket]
-
-        # Filter Sklearn Data
-        if any(m in models for m in ["logReg", "rf", "xgboost", "svm"]):
-            train_mask_sklearn = np.isin(worm_ids_sklearn, worm_train_indices)
-            test_mask_sklearn = np.isin(worm_ids_sklearn, worm_test_indices)
-
-            X_train_sklearn = X_sklearn[train_mask_sklearn]
-            y_train_sklearn = y_sklearn[train_mask_sklearn]
-
-            X_test_sklearn = X_sklearn[test_mask_sklearn]
-            y_test_sklearn = y_sklearn[test_mask_sklearn]
-            worm_ids_test_sklearn = worm_ids_sklearn[test_mask_sklearn]
-
-        # Filter TailMil Data (Indices)
-        if any(m.startswith("tail_mil") for m in models):
-            # Map worm IDs to dataset indices
-            train_indices_mil = []
-            for wid in worm_train_indices:
-                if wid in worm_id_to_indices:
-                    train_indices_mil.extend(worm_id_to_indices[wid])
-
-            test_indices_mil = []
-            for wid in worm_test_indices:
-                if wid in worm_id_to_indices:
-                    test_indices_mil.extend(worm_id_to_indices[wid])
-
         # Train and evaluate each model
-        for model_name, model_func in models.items():
+        for model_name, model in model_instances.items():
             print(f"Training model: {model_name}")
-            params = model_params.get(model_name, {}) if model_params else {}
-            if model_name.startswith("rocket"):
-                acc, prec, rec, f1, trained_model = model_func(
-                    X_train_rocket,
-                    X_test_rocket,
-                    y_train_rocket,
-                    y_test_rocket,
-                    worm_ids_test_rocket,
-                    **params,
-                )
-            elif model_name in ["logReg", "rf", "xgboost", "svm"]:
-                acc, prec, rec, f1, trained_model = model_func(
-                    X_train_sklearn,
-                    X_test_sklearn,
-                    y_train_sklearn,
-                    y_test_sklearn,
-                    worm_ids_test_sklearn,
-                    **params,
-                )
-            elif model_name.startswith("tail_mil"):
-                acc, prec, rec, f1, trained_model = model_func(
-                    dataset, train_indices_mil, test_indices_mil, **params
-                )
-            else:
-                raise ValueError(f"Unknown model name: {model_name}")
+            acc, prec, rec, f1, trained_model = model.run_fold(
+                worm_train_indices, worm_test_indices
+            )
 
             if prod:
                 if f1 > best_overall_f1:
@@ -156,7 +94,7 @@ def train_models(
                     best_overall_model_name = model_name
                     best_overall_model_instance = trained_model
                     print(f"-> New best model found: {model_name} (F1={f1:.4f})")
-                    if model_name.startswith("tail_mil"):
+                    if isinstance(trained_model, torch.nn.Module):
                         torch.save(trained_model.state_dict(), "best_model.pth")
                     else:
                         joblib.dump(trained_model, "best_model.pkl")
@@ -266,51 +204,41 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Example usage
-    models_to_run = {
-        # "logReg": LogisticRegModel,
-        # "rocket_500": RocketModel,
-        # "rocket_1000": RocketModel,
-        # "tail_mil_32b_8e_1e3": TailMilModel,
-        # "tail_mil_16b_8e_1e3": TailMilModel,
-        # "tail_mil_32b_8e_1e4": TailMilModel,
-        # "tail_mil_32b_16e_1e3": TailMilModel,
-        # "tail_mil_16b_16e_1e3": TailMilModel,
-        # "tail_mil_64b_16e_1e3": TailMilModel,
-        # "tail_mil_32b_32e_1e4": TailMilModel,
-        "tail_mil_32b_16e_1e4": TailMilModel,
-        "tail_mil_64b_16e_1e4": TailMilModel,
-    }
-    model_params = {
-        # "logReg": {"lr_params": {"max_iter": 1000, "use_scaler": True}},
-        # "rocket_500": {"rocket_params": {"num_kernels": 500, "use_scaler": True}},
-        # "rocket_1000": {"rocket_params": {"num_kernels": 1000, "use_scaler": True}},
-        # "tail_mil_32b_8e_1e3": {"batch_size": 32, "lr": 1e-3, "embed_dim": 8, "patience": 15, "use_scaler": True, "device": "cuda:1"},
-        # "tail_mil_16b_8e_1e3": {"batch_size": 16, "lr": 1e-3, "embed_dim": 8, "patience": 15, "use_scaler": True, "device": "cuda:1"},
-        # "tail_mil_32b_8e_1e4": {"batch_size": 32, "lr": 1e-4, "embed_dim": 8, "patience": 15, "use_scaler": True, "device": "cuda:2"},
-        # "tail_mil_32b_16e_1e3": {"batch_size": 32, "embed_dim": 16, "lr": 1e-3, "patience": 15, "use_scaler": True, "device": "cuda:1"},
-        # "tail_mil_16b_16e_1e3": {"batch_size": 16, "embed_dim": 16, "lr": 1e-3, "patience": 15, "use_scaler": True, "device": "cuda:1"},
-        # "tail_mil_64b_16e_1e3": {"batch_size": 64, "embed_dim": 16, "lr": 1e-3, "patience": 15, "use_scaler": True, "device": "cuda:1"},
-        # "tail_mil_32b_32e_1e4": {"batch_size": 32, "embed_dim": 32, "lr": 1e-4, "patience": 25, "use_scaler": True, "device": "cuda:2"},
+    models_config = {
+        # "logReg": {
+        #     "model_class": LogisticRegWrapper,
+        #     "params": {"lr_params": {"max_iter": 1000, "use_scaler": True}}
+        # },
+        # "rocket_500": {
+        #     "model_class": RocketWrapper,
+        #     "params": {"rocket_params": {"num_kernels": 500, "use_scaler": True}}
+        # },
         "tail_mil_32b_16e_1e4": {
-            "batch_size": 32,
-            "embed_dim": 16,
-            "lr": 1e-4,
-            "patience": 30,
-            "use_scaler": True,
-            "device": "cuda:2",
+            "model_class": TailMilWrapper,
+            "params": {
+                "batch_size": 32,
+                "embed_dim": 16,
+                "lr": 1e-4,
+                "patience": 30,
+                "use_scaler": True,
+                "device": "cuda:1",
+            }
         },
         "tail_mil_64b_16e_1e4": {
-            "batch_size": 64,
-            "embed_dim": 16,
-            "lr": 1e-4,
-            "patience": 30,
-            "use_scaler": True,
-            "device": "cuda:2",
+            "model_class": TailMilWrapper,
+            "params": {
+                "batch_size": 64,
+                "embed_dim": 16,
+                "lr": 1e-4,
+                "patience": 30,
+                "use_scaler": True,
+                "device": "cuda:1",
+            }
         },
     }
+    
     results = train_models(
-        models_to_run,
-        model_params,
+        models_config,
         pytorch_dir=args.pytorch_dir,
         augmented_data=args.augmented_data,
         prod=args.prod,

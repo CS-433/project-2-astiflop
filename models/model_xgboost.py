@@ -1,38 +1,40 @@
+import numpy as np
 from xgboost import XGBClassifier
-from .base import worm_level_aggregation, compute_metrics
+from .base import BaseModel, worm_level_aggregation, compute_metrics
 
+class XGBoostWrapper(BaseModel):
+    def load_data(self, dataset):
+        self.data, self.labels, self.worm_ids = dataset.get_data_for_sklearn()
 
-def XGBoostModel(
-    X_train,
-    X_test,
-    y_train,
-    y_test,
-    worm_ids,
-    threshold=0.5,
-    xgb_params=None,
-):
-    xgb_params = (
-        {
-            "n_estimators": xgb_params.get("n_estimators", 100),
-            "max_depth": xgb_params.get("max_depth", 3),
-            "learning_rate": xgb_params.get("learning_rate", 0.1),
-            "random_state": xgb_params.get("random_state", 42),
-        }
-        if xgb_params
-        else {
-            "n_estimators": 100,
-            "max_depth": 3,
-            "learning_rate": 0.1,
-            "random_state": 42,
-        }
-    )
-    clf = XGBClassifier(**xgb_params)
-    clf.fit(X_train, y_train)
-    y_proba = clf.predict_proba(X_test)[:, 1]
+    def run_fold(self, train_worm_ids, test_worm_ids):
+        if self.data is None:
+            raise ValueError("Data not loaded. Call load_data() first.")
 
-    worm_preds, worm_truth = worm_level_aggregation(
-        worm_ids, y_proba, y_test, threshold
-    )
-    acc, prec, rec, f1 = compute_metrics(worm_truth, worm_preds)
+        train_mask = np.isin(self.worm_ids, train_worm_ids)
+        test_mask = np.isin(self.worm_ids, test_worm_ids)
 
-    return acc, prec, rec, f1, clf
+        X_train = self.data[train_mask]
+        y_train = self.labels[train_mask]
+        X_test = self.data[test_mask]
+        y_test = self.labels[test_mask]
+        worm_ids_test = self.worm_ids[test_mask]
+
+        xgb_params = self.params.get("xgb_params", {})
+        threshold = self.params.get("threshold", 0.5)
+        
+        # Default params logic
+        if "n_estimators" not in xgb_params: xgb_params["n_estimators"] = 100
+        if "max_depth" not in xgb_params: xgb_params["max_depth"] = 3
+        if "learning_rate" not in xgb_params: xgb_params["learning_rate"] = 0.1
+        if "random_state" not in xgb_params: xgb_params["random_state"] = 42
+
+        clf = XGBClassifier(**xgb_params)
+        clf.fit(X_train, y_train)
+        y_proba = clf.predict_proba(X_test)[:, 1]
+
+        worm_preds, worm_truth = worm_level_aggregation(
+            worm_ids_test, y_proba, y_test, threshold
+        )
+        acc, prec, rec, f1 = compute_metrics(worm_truth, worm_preds)
+
+        return acc, prec, rec, f1, clf
