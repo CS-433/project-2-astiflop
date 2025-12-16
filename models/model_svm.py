@@ -1,6 +1,4 @@
-import numpy as np
 from sklearn.svm import SVC
-from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from .base import worm_level_aggregation, compute_metrics

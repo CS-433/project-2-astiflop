@@ -1,115 +1,186 @@
-# Worm Classification ML Project
+# Classification of C. elegans under Terbinafine Treatment
 
-## Project Structure
+## Project Overview
+This project focuses on the automated classification of *Caenorhabditis elegans* (*C. elegans*) nematodes based on their longevity phenotypes. Specifically, we aim to distinguish between worms treated with **Terbinafine** (Terbinafine+) and untreated control worms (Terbinafine-).
 
-```
-project-2-astiflop/
-│
-├── dataset.py
-├── extract_features.py
-├── fold_utils.py
-├── main_pipeline.py
-├── preprocess.py
-├── presents_results.py
-├── README.md
-├── data/
-│   ├── lifespan_summary.csv
-│   ├── TERBINAFINE- (control)/
-│   └── TERBINAFINE+/
-├── data_analysis/
-│   ├── exploration.ipynb
-│   └── generate_comparison_plot.py
-├── models/
-│   ├── base.py
-│   ├── model_lr.py
-│   ├── model_rf.py
-│   ├── model_rocket.py
-│   ├── model_svm.py
-│   ├── model_tail_mil.py
-│   └── model_xgboost.py
-├── preprocessed_data/
-├── preprocessed_data_for_classifier/
-└── tail_mil/
-```
+Terbinafine helps extending the lifespan of *C. elegans*. By analyzing movement trajectories and derived features, we investigate whether machine learning models can accurately predict the treatment group from behavioral data.
 
-## File Descriptions
+A key objective of this project was to adopt a **featureless approach** as much as possible. Instead of relying heavily on handcrafted biological metrics, we prioritized methods (such as ROCKET, Tail-MIL, and CNNs) that learn directly from raw data representations, minimizing the bias introduced by manual feature selection.
 
-### Data Preparation
+---
 
-- **preprocess.py**
-  Cleans and preprocesses raw worm tracking CSV files.
-  - Renames files for consistency.
-  - Drops invalid rows.
-  - Segments time series.
-  - Caps speed, normalizes coordinates, and interpolates gaps.
-  - Produces cleaned files in `preprocessed_data/`.
+## Preprocessing Methodology
 
-- **extract_features.py**
-  Converts preprocessed worm data into segment-level features for classical machine learning models.
-  - Computes features (age, speed, displacement, tortuosity) per segment.
-  - Aggregates and saves segment data for each worm in `preprocessed_data_for_classifier/`.
+The raw data consists of movement trajectories tracked over the worms' lifespans. Since the raw tracking data can be noisy and inconsistent, a rigorous preprocessing pipeline was applied to ensure data quality and relevance. The steps were applied in the following order:
 
-- **dataset.py**
-  Defines `UnifiedCElegansDataset`, a PyTorch Dataset class that handles data loading for all models.
-  - Loads raw time series for ROCKET and Deep Learning models.
-  - Loads feature-based data for Scikit-Learn models.
-  - Handles data splitting and formatting.
+### 1. Data Cleaning & Artifact Removal
+**Objective**: Remove non-biological noise and tracking errors.
+1.  **Drop First Row**: The first row of many files contained inconsistent timestamps or initialization artifacts. It was systematically removed.
+2.  **Death Clipping**: Frames recorded after the annotated frame of death were removed to focus analysis on the living phase.
 
-### Modeling
+### 2. Trajectory Reconstruction & Smoothing
+**Objective**: Fix tracking "jumps" where the camera lost the worm or swapped identity, causing unrealistic displacements.
+1.  **Speed Cap & Outlier Removal**: We identified instances of impossible acceleration (e.g., speed > 4). These are caused by tracking errors.
+2.  **Displacement Thresholding**: We removed frames where the sudden displacement exceeded a biological threshold (e.g., > 16 pixels/frame).
+3.  **Coordinate Reconstruction**: When gaps or jumps were removed, the worm's trajectory was stitched back together (cumulative summation of valid displacements) to recreate a continuous, biologically plausible path.
 
-- **main_pipeline.py**
-  The central script for training and evaluating models.
-  - Orchestrates the training process using Stratified K-Fold Cross-Validation.
-  - Supports multiple models: Logistic Regression, Random Forest, XGBoost, SVM, ROCKET, and Tail-MIL.
-  - Aggregates results across folds.
+### 3. Segmentation
+**Objective**: Handle the variable lifespan of worms.
+- Tracks were divided into fixed-length **segments** (e.g., 900 frames). This standardizes the input for models that process sequential data and allows us to analyze behavior at different life stages.
 
-- **models/**
-  Contains modular implementations of the different models:
-  - `model_rocket.py`: ROCKET (MiniRocketMultivariate) implementation for time series classification.
-  - `model_tail_mil.py`: Implementation of **TAIL-MIL** (Time-Aware Instance Learning - Multiple Instance Learning). This is a custom Deep Learning model that uses CNNs for feature extraction, followed by hierarchical attention mechanisms (Variable-level and Time-level) with positional encodings to classify worms based on their entire lifespan of movement segments.
-  - `model_lr.py`, `model_rf.py`, `model_svm.py`, `model_xgboost.py`: Wrappers for classical ML models (Logistic Regression, Random Forest, SVM, XGBoost).
-  - `base.py`: Base classes or common utilities for models.
+### 4. Feature Extraction (Tabular Models)
+For models like Logistic Regression, Random Forest, and SVM, we extracted scalar features per segment to capture behavioral dynamics:
+- **Mean & Median Speed**: Proxies for general activity levels.
+- **Net Displacement**: Distance between start and end points of a segment.
+- **Tortuosity**: Ratio of total path length to net displacement. High tortuosity indicates "searching" behavior (frequent turning), while low tortuosity indicates "roaming" behavior.
 
-- **tail_mil/**
-  Contains specific implementation details, experiments, or trained weights for the Tail-MIL model.
+---
 
-### Utilities
+## CNN Specific Preprocessing
 
-- **fold_utils.py**
-  Provides `get_stratified_worm_splits` to generate stratified K-Fold splits based on worm IDs, ensuring no data leakage between train and validation sets.
+For the Convolutional Neural Network (CNN) approach, we treated the trajectory classification as a computer vision problem. Instead of scalar features, we generated **visual representations** of the worm's movement.
 
-- **presents_results.py**
-  Utilities for processing and visualizing results.
-  - Calculates average metrics (Accuracy, Precision, Recall, F1) across folds.
-  - Saves results to JSON.
-  - Generates performance comparison plots.
+### Multichannel Trajectory Imaging (@Windowing Strategy)
+**Windowing Strategy**: although the tabular models use full 900-frame segments, for the CNN we further slice these segments into smaller **clips of 150 frames** (with a stride of 75).
+- This allows us to filter out clips containing `NaNs` (gaps) without discarding the entire segment.
+- It focuses the network on shorter, more detailed movement patterns.
 
-### Data Analysis
+We then converted these time-series coordinates $(x, t)$ into 3-channel images ($128 \times 128$ pixels) to encode spatial and temporal information simultaneously:
 
-- **data_analysis/**
-  Contains notebooks and scripts for data exploration and generating specific plots.
+- **Red Channel (Path)**: Binary occupancy map. Indicates *where* the worm has been.
+- **Green Channel (Time)**: Gradient from 0 to 255. Encodes *when* the worm was at a specific position (fading from dark to bright). This preserves temporal order in a static image.
+- **Blue Channel (Speed)**: Intensity mapped to instantaneous speed. Brighter pixels indicate faster movement at that location.
 
-## Typical Workflow
+**Example of Generated Input:**
+![Trajectory Example](/results/seg_6_frame_150_to_450.png)
 
-1. **Preprocessing:**
-   Run `preprocess.py` to clean and segment raw data.
+This encoding might allows the CNN (e.g., ResNet) to learn complex patterns like "slowing down while turning" or "looping behavior" that scalar features might miss.
 
-2. **Feature Extraction:**
-   Run `extract_features.py` to generate segment-level features for classical models.
+---
 
-3. **Model Training & Evaluation:**
-   Run `main_pipeline.py` to train and evaluate selected models.
-   ```bash
-   python main_pipeline.py --plot
-   ```
-   This script will:
-   - Load data using `dataset.py`.
-   - Perform Stratified K-Fold CV.
-   - Train models defined in `models/`.
-   - Save results to `avg_results.json`.
-   - Plot results if `--plot` is specified.
+---
 
 ## Data Leakage Prevention
 
-The project uses `fold_utils.py` to ensure that all segments or time series belonging to the same worm are kept together in either the training or validation set. This prevents the model from learning to recognize specific worms rather than general patterns associated with the treatment.
+One of the most critical aspects of our methodology was ensuring zero data leakage between training and validation sets. Since we segmented the lifespan of each worm into multiple data points:
+- A simple random split would put segments of the **same worm** in both the training and validation sets.
+- The model would then learn to recognize the specific worm's movement style rather than the treatment effect, leading to massively inflated performance metrics.
 
+**Solution**: We implemented **Stratified Group K-Fold Cross-Validation**, encapsulated in our custom module [`utils/train_utils/fold_utils.py`](utils/train_utils/fold_utils.py).
+- **Group**: We grouped data by `WormID`. All segments from a single worm are forced to be in the same fold (either all in train or all in validation).
+- **Stratified**: We ensured that the ratio of Treated vs. Control worms remains balanced across folds.
+
+This rigorous validation strategy ensures that our reported metrics reflect the model's ability to generalize to **new, unseen worms**.
+
+---
+
+## Pipelines & Architecture
+
+We implemented two distinct pipelines to robustly evaluate different modeling approaches.
+
+### 1. Main Pipeline (`main_pipeline.py`)
+This pipeline handles traditional Machine Learning models and Time Series classifiers.
+- **Models Supported**: Logistic Regression, Random Forest, SVM, XGBoost, and Time Series models like ROCKET and Tail-MIL.
+- **Data Augmentation**: To improve model robustness, we implemented a `UnifiedCElegansAugmentedDataset` that expands the training data by a factor of 6 using:
+    - **Rotations**: 3 random rotations per sample.
+    - **Translation**: Random X/Y offsets.
+    - **Scaling**: Random scaling (0.8x to 1.2x).
+- **Workflow**:
+    1.  Loads preprocessed tabular data (or raw time-series for ROCKET).
+    2.  Performs **Stratified Group K-Fold Cross-Validation** (ensuring all segments of one worm stay in the same fold prevent leakage).
+    3.  Training, Validation, and Metric reporting (Accuracy, F1, Precision, Recall).
+
+### 2. CNN Pipeline (`cnn_pipeline.py`)
+A dedicated pipeline for Deep Learning models processing the image datasets.
+- **Models Supported**: ResNet18, ResNet50, DenseNet121.
+- **Workflow**:
+    1.  **Custom Dataset Class (`CElegansCNNDataset`)**: Loads images and extracts labels/worm IDs.
+    2.  **Augmentation**: Applies random rotations, flips, and normalization to improve generalization.
+    3.  **Training Loop**: Runs a PyTorch training loop with Stratified Group K-Fold.
+    4.  **Comparison**: Automatically plots and compares the performance of different architectures.
+
+---
+
+
+## Project Structure
+```
+.
+├── cnn_dataset/               # Generated dataset for CNNs
+├── data/                      # Raw data and summary files
+├── models/                    # Model definitions
+│   ├── model_cnn.py           # CNN factory (ResNet, DenseNet)
+│   ├── model_lr.py            # Logistic Regression wrapper
+│   └── ...                    # Other model wrappers
+├── scripts/                   # Execution scripts
+│   ├── cnn_pipeline.py        # CNN training pipeline
+│   ├── main_pipeline.py       # Main pipeline for tabular/time-series models
+│   ├── preprocess.py          # Data cleaning and reconstruction
+│   └── extract_features.py    # Feature extraction for tabular models
+├── utils/                     # Utility functions
+│   ├── train_utils/           # Datasets and Stratified Group K-Fold logic
+│   └── plot_utils/            # Plotting functions
+└── requirements.txt           # Python dependencies
+```
+
+## Installation
+
+1.  Clone the repository.
+2.  Install the required dependencies using pip:
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+### 0. Preprocessing (Required First Step)
+Before running any analysis, the raw data must be cleaned, reconstructed, and prepared.
+
+**Standard Cleaning & Reconstruction:**
+```bash
+python scripts/preprocess.py
+```
+This script reads from `data/`, cleans the trajectories, and outputs validation-ready CSVs to `preprocessed_data/`.
+
+**Generating CNN Images:**
+To generate the dataset for the CNN pipeline (images):
+```bash
+python scripts/preprocess.py --generate-images --cnn-output-dir "cnn_dataset/"
+```
+
+**Feature Extraction (for tabular models):**
+After standard preprocessing, extract scalar features (speed, tortuosity, etc.):
+```bash
+python scripts/extract_features.py
+```
+
+### 1. Running the Main Pipeline
+Train and evaluate tabular models (Logistic Regression, Random Forest, etc.) or Time Series models (ROCKET).
+
+```bash
+python scripts/main_pipeline.py --pytorch_dir "preprocessed_data/"
+```
+
+**Options:**
+- `--plot`: Generate plots of the results.
+- `--augmented_data` / `-a`: Use the augmented dataset (6x larger).
+- `--prod`: Run in production mode (saves the best model).
+- `-o`: Specify output JSON filename for results.
+
+### 2. Running the CNN Pipeline
+Train and compare Deep Learning models (ResNet18, ResNet50, DenseNet).
+
+```bash
+python scripts/cnn_pipeline.py --data_dir "cnn_dataset"
+```
+
+**Configuration:**
+- You can modify the `models_config` dictionary inside `scripts/cnn_pipeline.py` to change architectures, batch sizes, or learning rates.
+
+---
+
+## Key Files
+- `scripts/preprocess.py`: Implementation of cleaning and trajectory reconstruction logic.
+- `scripts/main_pipeline.py`: Orchestrator for tabular and time-series models.
+- `scripts/cnn_pipeline.py`: Orchestrator for CNN models.
+- `models/`: Directory containing model definitions (ResNet factory, LogisticRegression wrapper, etc.).
+- `utils/train_utils/dataset.py`: Unified data loading logic.

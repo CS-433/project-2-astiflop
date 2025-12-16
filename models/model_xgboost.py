@@ -1,6 +1,4 @@
-import numpy as np
 from xgboost import XGBClassifier
-from sklearn.model_selection import StratifiedGroupKFold
 from .base import worm_level_aggregation, compute_metrics
 
 

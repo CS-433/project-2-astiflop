@@ -85,6 +85,37 @@ def plot_results(avg_results):
     print("Plot saved to model_performance.png")
     plt.close()
 
+def plot_cnn_comparison(results_summary, save_path="cnn_model_comparison.png"):
+    """
+    Plots the F1 comparison of different CNN models.
+    
+    Args:
+        results_summary (dict): Dictionary where keys are model names and values are dicts containing 'f1_mean' and 'f1_std'.
+        save_path (str): Path to save the plot.
+    """
+    model_names = list(results_summary.keys())
+    f1_means = [results_summary[m]["f1_mean"] for m in model_names]
+    f1_stds = [results_summary[m]["f1_std"] for m in model_names]
+    
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(model_names, f1_means, yerr=f1_stds, capsize=5, color='skyblue', edgecolor='black', alpha=0.8)
+    
+    plt.ylabel('F1 Score')
+    plt.title('Model Comparison (F1 Score)')
+    plt.ylim(0, 1.1)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    # Add values on top of bars
+    for bar, mean_val in zip(bars, f1_means):
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+                 f'{mean_val:.3f}', ha='center', va='bottom', fontweight='bold')
+                 
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300)
+    print(f"\nPlot saved to '{save_path}'")
+    # plt.show()
+
 
 if __name__ == "__main__":
     import argparse
