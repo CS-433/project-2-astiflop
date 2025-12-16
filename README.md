@@ -58,8 +58,6 @@ This encoding might allows the CNN (e.g., ResNet) to learn complex patterns like
 
 ---
 
----
-
 ## Data Leakage Prevention
 
 One of the most critical aspects of our methodology was ensuring zero data leakage between training and validation sets. Since we segmented the lifespan of each worm into multiple data points:
@@ -81,10 +79,10 @@ We implemented two distinct pipelines to robustly evaluate different modeling ap
 ### 1. Main Pipeline (`main_pipeline.py`)
 This pipeline handles traditional Machine Learning models and Time Series classifiers.
 - **Models Supported**: Logistic Regression, Random Forest, SVM, XGBoost, and Time Series models like ROCKET and Tail-MIL.
-- **Data Augmentation**: To improve model robustness, we implemented a `UnifiedCElegansAugmentedDataset` that expands the training data by a factor of 6 using:
-    - **Rotations**: 3 random rotations per sample.
+- **Data Augmentation**: To improve model robustness (avoid overfitting on the dataset's characteristics), we implemented a `UnifiedCElegansAugmentedDataset` that expands the training data with the following transforms:
+    - **Rotations**: Random rotations on the X and Y axis.
     - **Translation**: Random X/Y offsets.
-    - **Scaling**: Random scaling (0.8x to 1.2x).
+    - **Scaling**: Random scaling (0.8x to 1.2x) of all variates.
 - **Workflow**:
     1.  Loads preprocessed tabular data (or raw time-series for ROCKET).
     2.  Performs **Stratified Group K-Fold Cross-Validation** (ensuring all segments of one worm stay in the same fold prevent leakage).
@@ -162,12 +160,12 @@ python scripts/main_pipeline.py --pytorch_dir "preprocessed_data/"
 
 **Options:**
 - `--plot`: Generate plots of the results.
-- `--augmented_data` / `-a`: Use the augmented dataset (6x larger).
+- `--augmented_data` / `-a`: Use the augmented dataset. The number given after the argument specify the number of transformations per worm. If no number is specified but the options is present, 5 augmentations per worm will be produced. 
 - `--prod`: Run in production mode (saves the best model).
 - `-o`: Specify output JSON filename for results.
 
 ### 2. Running the CNN Pipeline
-Train and compare Deep Learning models (ResNet18, ResNet50, DenseNet).
+Train and compare CNN models (ResNet18, ResNet50, DenseNet).
 
 ```bash
 python scripts/cnn_pipeline.py --data_dir "cnn_dataset"
