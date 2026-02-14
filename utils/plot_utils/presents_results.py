@@ -66,7 +66,7 @@ def plot_results(avg_results):
     ax.bar_label(rects2, padding=3, fmt="%.2f")
 
     ax.set_ylabel("Scores")
-    ax.set_title("Model Performance: Accuracy vs F1")
+    ax.set_title("Models average performances accross folds")
     ax.set_xticks(x)
     ax.set_xticklabels(model_names, rotation=45, ha="right")
 
