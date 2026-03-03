@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
 from .base import BaseModel
 
-class TailMilWrapper(BaseModel): 
+class TailMilClassificationWrapper(BaseModel): 
     def train_on_fold(self, training_loader, validation_loader):
         lr = self.params.get("lr", 1e-4)
         embed_dim = self.params.get("embed_dim", 64)
@@ -204,7 +204,7 @@ class TailMilWrapper(BaseModel):
             model.train()
             train_loss = 0.0
 
-            for X, y in training_loader:
+            for X, y, _ in training_loader:
                 X, y = X.to(device), y.to(device).float()
                 preds, _, _ = model(X)
                 preds = preds.squeeze()
@@ -219,7 +219,7 @@ class TailMilWrapper(BaseModel):
             val_labels = []
             val_preds = []
             with torch.no_grad():
-                for X, y in validation_loader:
+                for X, y, _ in validation_loader:
                     X, y = X.to(device), y.to(device)
                     preds, _, _ = model(X)
                     preds = preds.squeeze()

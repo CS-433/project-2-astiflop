@@ -26,7 +26,7 @@ from models.model_rocket import RocketWrapper
 from models.model_rf import RandomForestWrapper
 from models.model_xgboost import XGBoostWrapper
 from models.model_svm import SVMWrapper
-from models.model_tail_mil import TailMilWrapper
+from models.model_tail_mil import TailMilClassificationWrapper
 
 
 def train_models(
@@ -163,7 +163,7 @@ if __name__ == "__main__":
         #     "params": {"rocket_params": {"num_kernels": 500, "use_scaler": True}}
         # },
         "tail_mil_32b_16e_1e4": {
-            "model_class": TailMilWrapper,
+            "model_class": TailMilClassificationWrapper,
             "params": {
                 "batch_size": 32,
                 "embed_dim": 16,
