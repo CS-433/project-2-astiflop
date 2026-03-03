@@ -174,138 +174,27 @@ if __name__ == "__main__":
     print(f"Variable Attention Shape: {v_importance.shape}")  # Should be (2, 75, 3)
 
 
-class ScaledDataset(Dataset):
-    def __init__(self, dataset, mean, std):
-        self.dataset = dataset
-        self.mean = mean.view(1, -1, 1)  # (1, F, 1)
-        self.std = std.view(1, -1, 1)    # (1, F, 1)
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        x, y = self.dataset[idx]
-        # x shape: (max_segments, features, segment_len)
-        
-        # Identify non-padded segments (assuming padding is zero and valid data is not all zero)
-        # x shape: (S, F, L) -> flatten F and L to check if segment is all zeros
-        mask = (x.view(x.size(0), -1).abs().sum(dim=-1) > 1e-6).float().view(-1, 1, 1) # (max_segments, 1, 1)
-        
-        # Apply scaling
-        x_scaled = (x - self.mean) / (self.std + 1e-8)
-        
-        # Re-apply mask to ensure padding remains zero
-        x_scaled = x_scaled * mask
-        
-        # DEBUG: print stats about the scaled features
-        # print(f"feature 1 after scaling: min={x_scaled[:,:,0].min().item():.4f}, max={x_scaled[:,:,0].max().item():.4f}, mean={x_scaled[:,:,0].mean().item():.4f}, std={x_scaled[:,:,0].std().item():.4f}")
-        # print(f"feature 2 after scaling: min={x_scaled[:,:,1].min().item():.4f}, max={x_scaled[:,:,1].max().item():.4f}, mean={x_scaled[:,:,1].mean().item():.4f}, std={x_scaled[:,:,1].std().item():.4f}")
-        # print(f"feature 3 after scaling: min={x_scaled[:,:,2].min().item():.4f}, max={x_scaled[:,:,2].max().item():.4f}, mean={x_scaled[:,:,2].mean().item():.4f}, std={x_scaled[:,:,2].std().item():.4f}")
-        # exit(0)
-        return x_scaled, y
-
-def compute_stats(dataset, indices, batch_size=32):
-    loader = DataLoader(Subset(dataset, indices), batch_size=batch_size, shuffle=False)
-    
-    n_samples = 0
-    sum_x = None
-    sum_sq_x = None
-    
-    for x, _ in loader:
-        # x: (B, S, F, L)
-        B, S, F, L = x.shape
-        
-        if sum_x is None:
-            sum_x = torch.zeros(F)
-            sum_sq_x = torch.zeros(F)
-            
-        # Mask for valid segments
-        mask = (x.view(B, S, -1).abs().sum(dim=-1) > 1e-6)
-        
-        # x[mask] -> (N_valid, F, L)
-        valid_x = x[mask]
-        
-        if valid_x.numel() == 0:
-            continue
-            
-        # Reshape to (N_valid * L, F)
-        valid_x_flat = valid_x.transpose(1, 2).reshape(-1, F)
-        
-        sum_x += valid_x_flat.sum(dim=0)
-        sum_sq_x += (valid_x_flat ** 2).sum(dim=0)
-        n_samples += valid_x_flat.shape[0]
-        
-    mean = sum_x / n_samples
-    std = torch.sqrt(sum_sq_x / n_samples - mean ** 2)
-    
-    return mean, std
-
-
 from .base import BaseModel
 
-class TailMilWrapper(BaseModel):
-    def load_data(self, dataset):
-        self.dataset = dataset
-        self.worm_ids = dataset.get_worm_ids_for_pytorch()
-        # Map worm IDs to indices
-        self.worm_id_to_indices = {}
-        for idx, wid in enumerate(self.worm_ids):
-            if wid not in self.worm_id_to_indices:
-                self.worm_id_to_indices[wid] = []
-            self.worm_id_to_indices[wid].append(idx)
-
-    def run_fold(self, train_worm_ids, test_worm_ids):
-        if self.dataset is None:
-            raise ValueError("Data not loaded. Call load_data() first.")
-
-        train_indices = []
-        for wid in train_worm_ids:
-            if wid in self.worm_id_to_indices:
-                train_indices.extend(self.worm_id_to_indices[wid])
-
-        test_indices = []
-        for wid in test_worm_ids:
-            if wid in self.worm_id_to_indices:
-                test_indices.extend(self.worm_id_to_indices[wid])
-
-        batch_size = self.params.get("batch_size", 8)
+class TailMilWrapper(BaseModel): 
+    def train_on_fold(self, training_loader, validation_loader):
         lr = self.params.get("lr", 1e-4)
         embed_dim = self.params.get("embed_dim", 64)
         epochs = self.params.get("epochs", 100)
         patience = self.params.get("patience", 10)
         threshold = self.params.get("threshold", 0.5)
-        use_scaler = self.params.get("use_scaler", False)
+        segment_len = self.params.get("segment_len", 900)
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
 
-        if use_scaler:
-            mean, std = compute_stats(self.dataset, train_indices, batch_size=batch_size)
-            print(f"Computed feature means: {mean}, stds: {std}")
-            
-            train_subset = ScaledDataset(Subset(self.dataset, train_indices), mean, std)
-            test_subset = ScaledDataset(Subset(self.dataset, test_indices), mean, std)
-            
-            train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
-            test_loader = DataLoader(test_subset, batch_size=batch_size, shuffle=False)
-        else:
-            mean, std = None, None
-            train_loader = DataLoader(
-                Subset(self.dataset, train_indices), batch_size=batch_size, shuffle=True
-            )
-            test_loader = DataLoader(
-                Subset(self.dataset, test_indices), batch_size=batch_size, shuffle=False
-            )
-
         model = TAIL_MIL(
-            segment_len=self.dataset.segment_len, embed_dim=embed_dim
+            segment_len=segment_len, embed_dim=embed_dim
         ).to(device)
-        model.mean = mean
-        model.std = std
+        
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         criterion = torch.nn.BCELoss()
 
         best_val_acc = -float("inf")
         best_val_f1 = 0
-        best_val_auc = 0
         best_val_prec = 0
         best_val_rec = 0
         epochs_no_improve = 0
@@ -314,7 +203,8 @@ class TailMilWrapper(BaseModel):
         for epoch in tqdm(range(epochs), desc="Training TAIL-MIL"):
             model.train()
             train_loss = 0.0
-            for X, y in train_loader:
+
+            for X, y in training_loader:
                 X, y = X.to(device), y.to(device).float()
                 preds, _, _ = model(X)
                 preds = preds.squeeze()
@@ -323,13 +213,13 @@ class TailMilWrapper(BaseModel):
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
-            avg_train_loss = train_loss / len(train_loader)
+            avg_train_loss = train_loss / len(training_loader)
             # Validation
             model.eval()
             val_labels = []
             val_preds = []
             with torch.no_grad():
-                for X, y in test_loader:
+                for X, y in validation_loader:
                     X, y = X.to(device), y.to(device)
                     preds, _, _ = model(X)
                     preds = preds.squeeze()
