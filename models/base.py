@@ -5,29 +5,19 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 class BaseModel(ABC):
     def __init__(self, params=None):
         self.params = params or {}
-        self.data = None
-        self.labels = None
-        self.worm_ids = None
 
     @abstractmethod
-    def load_data(self, dataset):
+    def train_on_fold(self, training_loader, validation_loader):
         """
-        Extracts necessary data from the UnifiedCElegansDataset.
-        Stores it in self.data, self.labels, self.worm_ids or similar.
-        """
-        pass
+        Train the model on the given training data and evaluate on validation data.
+        Should return accuracy, precision, recall, F1 score, and the trained model instance.
 
-    @abstractmethod
-    def run_fold(self, train_worm_ids, test_worm_ids):
-        """
-        Runs the model for a single fold using the pre-loaded data.
-        
-        Args:
-            train_worm_ids: List of worm IDs for training.
-            test_worm_ids: List of worm IDs for testing.
-            
         Returns:
-            acc, prec, rec, f1, trained_model
+            acc (float): Accuracy of the model on validation data.
+            prec (float): Precision of the model on validation data.
+            rec (float): Recall of the model on validation data.
+            f1 (float): F1 score of the model on validation data.
+            trained_model (object): The trained model instance.
         """
         pass
 
