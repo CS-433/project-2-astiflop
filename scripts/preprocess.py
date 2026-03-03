@@ -7,49 +7,32 @@ from glob import glob
 
 import tqdm
 
-CONTROL = "TERBINAFINE- (control)"
-TREATED = "TERBINAFINE+"
-
-
-def rename_file(file_name, treatment, treatment_dir):
+def check_first_rows(file_name, destination_dir):
     """
-    Rename files according to worm ID to ensure consistency with lifespan_summary.csv
-
-    Args:
-        file (str): Original filename
-        treatment (str): Treatment group
-        treatment_dir (str): Directory to save renamed files
-    """
-    if file_name.endswith(".csv"):
-        parts = file_name.split("_")
-        if len(str(parts[3])) == 1:
-            parts[3] = "0" + str(parts[3])
-        worm_id = f"{parts[2]}_piworm{parts[3]}_{parts[4]}"
-        df = pd.read_csv(os.path.join("data", treatment, file_name))
-        new_path = os.path.join(treatment_dir, f"{worm_id}.csv")
-        df.to_csv(new_path, index=False)
-        return new_path
-    return None
-
-
-def drop_first_row(file_name, treatment_dir):
-    """
-    Drop the first row of the CSV file, which may contain invalid data.
+    Check if the 10 first rows of the CSV file have valid timestamps. If not, drop the ill ones and save the cleaned file back.
     Args:
         file (str): Filename to process
-        treatment_dir (str): Directory where the file is located
+        destination_dir (str): Directory where the file is located
     """
     if file_name.endswith(".csv"):
-        file_path = os.path.join(treatment_dir, file_name)
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_name)
         df["Timestamp"] = pd.to_datetime(df["Timestamp"])
-        if (
-            pd.isna(df.loc[0, "Timestamp"])
-            or abs((df.loc[1, "Timestamp"] - df.loc[0, "Timestamp"]).total_seconds())
-            > 3600
-        ):
-            df = df.drop(index=0).reset_index(drop=True)
-            df.to_csv(file_path, index=False)
+        
+        rows_to_drop = []
+        for i in range(min(10, len(df) - 1)):
+            if pd.isna(df.loc[i, "Timestamp"]):
+                rows_to_drop.append(i)
+            elif pd.notna(df.loc[i + 1, "Timestamp"]):
+                diff = abs((df.loc[i + 1, "Timestamp"] - df.loc[i, "Timestamp"]).total_seconds())
+                if diff > 1000:
+                    rows_to_drop.append(i)
+                    
+        if rows_to_drop:
+            df = df.drop(index=rows_to_drop).reset_index(drop=True)
+        
+        file_output_path = os.path.join(destination_dir, os.path.basename(file_name))
+        df.to_csv(file_output_path, index=False)
+        return file_output_path
 
 
 def add_segment_column(file, frames_per_segment=900):
@@ -61,34 +44,7 @@ def add_segment_column(file, frames_per_segment=900):
         frame_per_segment (int): Number of frames per segment
     """
     df = pd.read_csv(file)
-    num_rows = len(df)
-    df["Segment"] = np.arange(num_rows) // frames_per_segment
-    df.to_csv(file, index=False)
-
-
-def add_label_column(file, label):
-    """
-    Add a 'Label' column to the CSV file with the specified label.
-
-    Args:
-        file (str): Filename to process
-        label (int): Label to add (0 for control, 1 for treated)
-    """
-    df = pd.read_csv(file)
-    df["Terbinafine"] = label
-    df.to_csv(file, index=False)
-
-
-def add_worm_id_column(file, worm_id):
-    """
-    Add a 'WormID' column to the CSV file with the specified worm ID.
-
-    Args:
-        file (str): Filename to process
-        worm_id (str): Worm ID to add
-    """
-    df = pd.read_csv(file)
-    df["WormID"] = worm_id
+    df["Segment"] = df["GlobalFrame"] // frames_per_segment
     df.to_csv(file, index=False)
 
 
@@ -347,18 +303,6 @@ def filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=2):
 
     return pd.concat(cleaned_segments).reset_index(drop=True)
 
-
-def drop_frames_after_death(df, frame_of_death):
-    """
-    Drop all frames after the frame of death.
-
-    Args:
-        df (pd.DataFrame)
-        frame_of_death (int): Frame number indicating death
-    """
-    return df[df["GlobalFrame"] <= frame_of_death]
-
-
 def clean_segment_gaps(
     segment_df, gap_interpolation_limit=10, long_gap_threshold=11, drop_na=False
 ):
@@ -484,33 +428,23 @@ def add_computed_speed_columns(df):
 
 
 def preprocess_file(
-    file, frame_of_death, speed_cap=4, normalize_coords=False, distance_threshold=16
+    file, speed_cap=4, normalize_coords=False, distance_threshold=16
 ):
     """
     Preprocess a single CSV file by applying various cleaning steps.
 
     Args:
         file (str): Filename to process
-        frame_of_death (int): Frame number indicating death
         speed_cap (float): Maximum speed value
         normalize_coords (bool): Whether to normalize coordinates
         distance_threshold (float): Distance threshold for coordinate reconstruction
     """
     df = pd.read_csv(file)
-    df = drop_frames_after_death(df, frame_of_death)
-    # df = cap_speed(df, speed_cap=speed_cap) # original preprocessing
-    # df = remove_high_speed_outliers(df) # preprocessing 2
-    # df = remove_large_displacement_outliers(df, distance_threshold=2) # preprocessing 3
-    # df = filter_and_transform_to_displacement(df, distance_threshold=2) # preprocessing 4
-    # df = filter_and_reconstruct_coordinates(df, distance_threshold=2) # preprocessing 5
-    # df = filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=2) # preprocessing 6
-    # df = filter_and_reconstruct_coordinates_by_segment(df, distance_threshold=20) # preprocessing 7
     df = filter_and_reconstruct_coordinates_by_segment(
         df, distance_threshold=distance_threshold
-    )  # final preprocessing
+    )
     cleaned_segments = []
     for segment_id, segment_df in df.groupby("Segment"):
-        # segment_df = clean_segment_gaps(segment_df) # known useless for preprocessing 6+
         segment_df = add_computed_speed_columns(segment_df)
         segment_df = add_turning_rate_column_within_segments(segment_df)
         cleaned_segments.append(segment_df)
@@ -525,60 +459,44 @@ def preprocess_file(
 
 
 def process_all_files(
-    treatment,
-    lifespan_summary,
+    data,
     output_dir="preprocessed_data/",
     speed_cap=4,
     normalize_coords=False,
     specific_file=None,
     distance_threshold=16,
+    input_base_dir="data",
 ):
     """
     Preprocess all CSV files in the specified treatment group.
 
     Args:
-        treatment (str): Treatment group
-        lifespan_summary (pd.DataFrame): DataFrame containing lifespan summary
+        data (str): Data directory name
         output_dir (str): Directory to save preprocessed files
         speed_cap (float): Maximum speed value
         normalize_coords (bool): Whether to normalize coordinates
         specific_file (str): Optional specific file to process (basename)
         distance_threshold (float): Distance threshold for coordinate reconstruction
+        input_base_dir (str): Directory containing the data folders
     """
-    treatment_dir = os.path.join(output_dir, treatment)
-    os.makedirs(treatment_dir, exist_ok=True)
+    destination_dir = os.path.join(output_dir, data)
+    os.makedirs(destination_dir, exist_ok=True)
 
     if specific_file:
         # Check if the file exists in this treatment folder
-        full_path = os.path.join("data", treatment, specific_file)
+        full_path = os.path.join(input_base_dir, data, specific_file)
         if os.path.exists(full_path):
             files = [full_path]
         else:
-            files = []
+            return None
     else:
-        files = glob(os.path.join("data", treatment, "*.csv"))
+        files = glob(os.path.join(input_base_dir, data, "*.csv"))
 
-    preprocessed_files = []
     for file in tqdm.tqdm(files):
-        new_path = rename_file(os.path.basename(file), treatment, treatment_dir)
-        if new_path:
-            preprocessed_files.append(new_path)
-
-    for file in tqdm.tqdm(preprocessed_files):
-        drop_first_row(os.path.basename(file), treatment_dir)
-        add_segment_column(file)
-        add_label_column(file, label=treatment == TREATED)
-        worm_id = os.path.splitext(os.path.basename(file))[0]
-        add_worm_id_column(file, worm_id)
-
-    for file in tqdm.tqdm(preprocessed_files):
-        worm_id = os.path.splitext(os.path.basename(file))[0]
-        frame_of_death = lifespan_summary.loc[
-            lifespan_summary["Filename"] == "/" + worm_id, "LifespanInFrames"
-        ].values[0]
+        output_path = check_first_rows(file, destination_dir)
+        add_segment_column(output_path)
         preprocess_file(
-            file,
-            frame_of_death,
+            output_path,
             speed_cap=speed_cap,
             normalize_coords=normalize_coords,
             distance_threshold=distance_threshold,
@@ -791,8 +709,92 @@ def preprocess_for_cnn(
     print(f"Done! {count_generated} images generated.")
 
 
+
+def load_config(data_dir):
+    config_path = os.path.join(data_dir, "config.json")
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found in {data_dir}. A config.json file is required with 'control_folder', 'treated_folder', and 'lifespan_file' keys.")
+    
+    with open(config_path, "r") as f:
+        config = pd.read_json(config_path, typ='series')
+    return config
+
+def calculate_and_save_stats(output_dir, speed_column="ComputedSpeed_frames"):
+    """
+    Calculate global statistics (mean, std, min, max) for feature columns 
+    across all preprocessed CSV files and save to a JSON file.
+    """
+    all_files = glob(os.path.join(output_dir, "**", "*.csv"), recursive=True)
+    
+    # Initialize accumulators
+    total_count = 0
+    sum_vals = None
+    sum_sq_vals = None
+    min_vals = None
+    max_vals = None
+    
+    feature_cols = ["X", "Y", speed_column]
+    
+    print("Calculating dataset statistics...")
+    
+    for file_path in tqdm.tqdm(all_files, desc="Stats"):
+        try:
+            df = pd.read_csv(file_path)
+            if df.empty:
+                continue
+            
+            # Filter for numeric columns of interest
+            cols = [c for c in feature_cols if c in df.columns]
+            if not cols:
+                continue
+                
+            data = df[cols].values
+            
+            if sum_vals is None:
+                final_cols = cols
+                sum_vals = np.zeros(len(cols))
+                sum_sq_vals = np.zeros(len(cols))
+                min_vals = np.full(len(cols), np.inf)
+                max_vals = np.full(len(cols), -np.inf)
+                
+            if cols != final_cols:
+                # Skip files with different columns if mismatch
+                continue
+
+            # Update stats
+            sum_vals += np.sum(data, axis=0)
+            sum_sq_vals += np.sum(data ** 2, axis=0)
+            min_vals = np.minimum(min_vals, np.min(data, axis=0))
+            max_vals = np.maximum(max_vals, np.max(data, axis=0))
+            total_count += len(data)
+
+        except Exception as e:
+            print(f"Error processing {file_path} for stats: {e}")
+
+    if total_count > 0:
+        mean = sum_vals / total_count
+        std = np.sqrt(sum_sq_vals / total_count - mean ** 2)
+        
+        stats = {
+            "features": final_cols,
+            "mean": mean.tolist(),
+            "std": std.tolist(),
+            "min": min_vals.tolist(),
+            "max": max_vals.tolist(),
+            "count": int(total_count)
+        }
+        
+        stats_path = os.path.join(output_dir, "dataset_stats.json")
+        with open(stats_path, "w") as f:
+            pd.Series(stats).to_json(f)
+        print(f"Saved dataset statistics to {stats_path}")
+    else:
+        print("No data found to calculate statistics.")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Process files with options.")
+    parser.add_argument("data_dir", type=str, help="Root directory containing data and config.json")
     parser.add_argument("--speed-cap", type=float, default=4, help="Max speed cap.")
     parser.add_argument(
         "--distance-threshold", type=float, default=16, help="Distance threshold."
@@ -827,38 +829,44 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    CONTROL = "TERBINAFINE- (control)"
-    TREATED = "TERBINAFINE+"
+    # Load configuration
+    try:
+        config = load_config(args.data_dir)
+        CONTROL_DIR = config.get("control_folder", "TERBINAFINE- (control)")
+        TREATED_DIR = config.get("treated_folder", "TERBINAFINE+")
+    except Exception as e:
+        print(f"Error loading config of data: {e}")
+        exit(1)
 
     # 1. CSV Preprocessing Step
     # Run only if NOT in 'only-cnn' mode
     if not args.only_cnn:
-        if os.path.exists("data/lifespan_summary.csv"):
-            lifespan_summary = pd.read_csv("data/lifespan_summary.csv")
+        print(f"------ CSV Processing: Control Group ({CONTROL_DIR}) ------")
+        process_all_files(
+            CONTROL_DIR,
+            output_dir=args.output_dir,
+            speed_cap=args.speed_cap,
+            normalize_coords=args.normalize,
+            specific_file=args.file,
+            distance_threshold=args.distance_threshold,
+            input_base_dir=args.data_dir
+        )
 
-            print("------ CSV Processing: Control Group ------")
-            process_all_files(
-                CONTROL,
-                lifespan_summary,
-                output_dir=args.output_dir,
-                speed_cap=args.speed_cap,
-                normalize_coords=args.normalize,
-                specific_file=args.file,
-                distance_threshold=args.distance_threshold,
-            )
+        print(f"------ CSV Processing: Treated Group ({TREATED_DIR}) ------")
+        process_all_files(
+            TREATED_DIR,
+            output_dir=args.output_dir,
+            speed_cap=args.speed_cap,
+            normalize_coords=args.normalize,
+            specific_file=args.file,
+            distance_threshold=args.distance_threshold,
+            input_base_dir=args.data_dir
+        )
+        
+        # Calculate statistics after processing
+        if not args.file:
+            calculate_and_save_stats(args.output_dir)
 
-            print("------ CSV Processing: Treated Group ------")
-            process_all_files(
-                TREATED,
-                lifespan_summary,
-                output_dir=args.output_dir,
-                speed_cap=args.speed_cap,
-                normalize_coords=args.normalize,
-                specific_file=args.file,
-                distance_threshold=args.distance_threshold,
-            )
-        else:
-            print("Warning: 'data/lifespan_summary.csv' not found.")
     else:
         print("Skipping CSV Preprocessing (--only-cnn active)...")
 
@@ -874,3 +882,4 @@ if __name__ == "__main__":
             img_size=128,
             speed_column="ComputedSpeed_frames",
         )
+
