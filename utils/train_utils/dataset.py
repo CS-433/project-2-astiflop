@@ -528,7 +528,7 @@ class LPBSDataset(Dataset):
                 
             self.data.append(data_tensor)
             self.worm_ids.append(os.path.splitext(os.path.basename(file_path))[0])
-            self.lifespan_segments.append(segments.max())
+            self.lifespan_segments.append(df["Segment"].max())
 
     def _apply_normalization(self, mode, scaler_config_path, scaler_type):
         """Calculates or loads stats and applies normalization."""
