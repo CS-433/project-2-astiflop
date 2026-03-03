@@ -492,7 +492,9 @@ def process_all_files(
     else:
         files = glob(os.path.join(input_base_dir, data, "*.csv"))
 
-    for file in tqdm.tqdm(files):
+    pbar = tqdm.tqdm(files)
+    for file in pbar:
+        pbar.set_description(f"Processing {os.path.basename(file)}")
         output_path = check_first_rows(file, destination_dir)
         add_segment_column(output_path)
         preprocess_file(
