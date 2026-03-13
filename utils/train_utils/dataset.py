@@ -533,7 +533,11 @@ class LPBSDataset(Dataset):
     def _apply_normalization(self, mode, scaler_config_path, scaler_type):
         """Calculates or loads stats and applies normalization."""
         # 1. Statistics         
-        # Stack to (N, S, F, L)
+        # Stack to (N, S, F, L) 
+        #  Number of samples, total number of worms in the dataset.
+        #  Segments, the maximum number of time segments recorded for each worm.
+        #  Features, the number of physical metrics recorded at each time point (X, Y, and Speed).
+        #  Length, the number of frames per segment.
         all_data = torch.stack(self.data) # This might be large
         
         if mode == "train":
