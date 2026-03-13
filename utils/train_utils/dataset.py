@@ -537,31 +537,51 @@ class LPBSDataset(Dataset):
         all_data = torch.stack(self.data) # This might be large
         
         if mode == "train":
-            # Ignore padding            
-            mask = (all_data.abs().sum(dim=2, keepdim=True) > 1e-6) # (N, S, 1, L)
-            means = []
-            stds = []
-            mins = []
-            maxs = []
-            
-            num_features = all_data.shape[2]
-            
-            for f in range(num_features):
-                feat_data = all_data[:, :, f, :] # (N, S, L)
-                feat_mask = mask[:, :, 0, :]   # (N, S, L)
+            if scaler_type == "old":
+                mask_old = (all_data.view(all_data.size(0), all_data.size(1), -1).abs().sum(dim=-1) > 1e-6)
+                valid_x = all_data[mask_old] # (N_valid, F, L)
+                num_features = all_data.shape[2]
                 
-                valid_vals = feat_data[feat_mask] # 1D tensor of valid values
-                
-                if valid_vals.numel() > 0:
-                    means.append(valid_vals.mean().item())
-                    stds.append(valid_vals.std().item())
-                    mins.append(valid_vals.min().item())
-                    maxs.append(valid_vals.max().item())
+                if valid_x.numel() > 0:
+                    valid_x_flat = valid_x.transpose(1, 2).reshape(-1, num_features)
+                    sum_x = valid_x_flat.sum(dim=0)
+                    sum_sq_x = (valid_x_flat ** 2).sum(dim=0)
+                    n_samples = valid_x_flat.shape[0]
+                    mean_t = sum_x / n_samples
+                    std_t = torch.sqrt(sum_sq_x / n_samples - mean_t ** 2)
+                    means = mean_t.tolist()
+                    stds = std_t.tolist()
                 else:
-                    means.append(0.0)
-                    stds.append(1.0)
-                    mins.append(0.0)
-                    maxs.append(1.0)
+                    means = [0.0] * num_features
+                    stds = [1.0] * num_features
+                mins = [0.0] * num_features
+                maxs = [1.0] * num_features
+            else:
+                # Ignore padding            
+                mask = (all_data.abs().sum(dim=2, keepdim=True) > 1e-6) # (N, S, 1, L)
+                means = []
+                stds = []
+                mins = []
+                maxs = []
+                
+                num_features = all_data.shape[2]
+                
+                for f in range(num_features):
+                    feat_data = all_data[:, :, f, :] # (N, S, L)
+                    feat_mask = mask[:, :, 0, :]   # (N, S, L)
+                    
+                    valid_vals = feat_data[feat_mask] # 1D tensor of valid values
+                    
+                    if valid_vals.numel() > 0:
+                        means.append(valid_vals.mean().item())
+                        stds.append(valid_vals.std().item())
+                        mins.append(valid_vals.min().item())
+                        maxs.append(valid_vals.max().item())
+                    else:
+                        means.append(0.0)
+                        stds.append(1.0)
+                        mins.append(0.0)
+                        maxs.append(1.0)
             
             stats = {
                 "mean": means,
@@ -593,14 +613,22 @@ class LPBSDataset(Dataset):
         new_data = []
         for i in range(len(self.data)):
             tensor = self.data[i].unsqueeze(0) # (1, S, F, L)
-            mask = (tensor.abs().sum(dim=2, keepdim=True) > 1e-6).float()
             
-            if scaler_type == "standard":
-                tensor = (tensor - mean) / (std + 1e-8)
-            elif scaler_type == "minmax":
-                tensor = (tensor - min_v) / (max_v - min_v + 1e-8)
-            
-            tensor = tensor * mask # Re-apply mask to clean padding
+            if scaler_type == "old":
+                x = tensor.squeeze(0)
+                mask_old = (x.view(x.size(0), -1).abs().sum(dim=-1) > 1e-6).float().view(-1, 1, 1)
+                x_scaled = (x - mean.squeeze(0)) / (std.squeeze(0) + 1e-8)
+                tensor = (x_scaled * mask_old).unsqueeze(0)
+            else:
+                mask = (tensor.abs().sum(dim=2, keepdim=True) > 1e-6).float()
+                
+                if scaler_type == "standard":
+                    tensor = (tensor - mean) / (std + 1e-8)
+                elif scaler_type == "minmax":
+                    tensor = (tensor - min_v) / (max_v - min_v + 1e-8)
+                
+                tensor = tensor * mask # Re-apply mask to clean padding
+                
             new_data.append(tensor.squeeze(0))
             
         self.data = new_data
