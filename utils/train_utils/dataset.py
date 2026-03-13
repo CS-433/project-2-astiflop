@@ -690,6 +690,7 @@ class LPBSDataset(Dataset):
         self.treatments = augmented_treatments
         self.worm_ids = augmented_worm_ids
         self.lifespan_segments = augmented_lifespan_segments
+        print(f"Data augmented with {n_augmentations_per_sample} augmentations per sample. Total samples: {len(self.data)}")
 
     def __len__(self):
         return len(self.data)
