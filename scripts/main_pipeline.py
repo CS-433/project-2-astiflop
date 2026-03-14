@@ -190,7 +190,7 @@ if __name__ == "__main__":
         pytorch_dir=args.pytorch_dir,
         augment_data=args.augment_data,
         prod=args.prod,
-        scaler={"type": args.scaler, "mode": "train"}
+        scaler=args.scaler
     )
 
     # Calculate average results

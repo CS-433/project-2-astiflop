@@ -609,10 +609,10 @@ class LPBSDataset(Dataset):
                 stats = json.load(f)
         
         # 2. Normalization
-        mean = torch.tensor(stats["mean"]).view(1, 1, -1, 1)
-        std = torch.tensor(stats["std"]).view(1, 1, -1, 1)
-        min_v = torch.tensor(stats["min"]).view(1, 1, -1, 1)
-        max_v = torch.tensor(stats["max"]).view(1, 1, -1, 1)
+        mean = torch.tensor(stats["mean"], device=self.device).view(1, 1, -1, 1)
+        std = torch.tensor(stats["std"], device=self.device).view(1, 1, -1, 1)
+        min_v = torch.tensor(stats["min"], device=self.device).view(1, 1, -1, 1)
+        max_v = torch.tensor(stats["max"], device=self.device).view(1, 1, -1, 1)
         
         new_data = []
         for i in range(len(self.data)):
