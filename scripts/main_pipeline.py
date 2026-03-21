@@ -162,27 +162,50 @@ if __name__ == "__main__":
         #     "model_class": RocketWrapper,
         #     "params": {"rocket_params": {"num_kernels": 500, "use_scaler": True}}
         # },
-        "tail_mil_32b_16e_1e4": {
+        "tail_mil_32b_64e_1e3": {
+            "model_class": TailMilClassificationWrapper,
+            "params": {
+                "batch_size": 32,
+                "embed_dim": 64,
+                "lr": 1e-3,
+                "patience": 50,
+                "epochs": 200,
+                "device": "cuda",
+            }
+        },
+        "tail_mil_32b_32e_1e3": {
+            "model_class": TailMilClassificationWrapper,
+            "params": {
+                "batch_size": 32,
+                "embed_dim": 32,
+                "lr": 1e-3,
+                "patience": 50,
+                "epochs": 200,
+                "device": "cuda",
+            }
+        },
+        "tail_mil_32b_32e_1e3": {
             "model_class": TailMilClassificationWrapper,
             "params": {
                 "batch_size": 32,
                 "embed_dim": 16,
-                "lr": 1e-4,
-                "patience": 30,
+                "lr": 1e-3,
+                "patience": 50,
+                "epochs": 200,
                 "device": "cuda",
             }
         },
-        # "tail_mil_64b_16e_1e4": {
-        #     "model_class": TailMilWrapper,
-        #     "params": {
-        #         "batch_size": 64,
-        #         "embed_dim": 16,
-        #         "lr": 1e-4,
-        #         "patience": 30,
-        #         "use_scaler": True,
-        #         "device": "cuda",
-        #     }
-        # },
+        "tail_mil_64b_32e_1e4": {
+            "model_class": TailMilClassificationWrapper,
+            "params": {
+                "batch_size": 64,
+                "embed_dim": 32,
+                "lr": 1e-4,
+                "patience": 50,
+                "epochs": 200,
+                "device": "cuda",
+            }
+        },
     }
     
     results = train_models(
