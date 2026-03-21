@@ -115,17 +115,3 @@ def plot_cnn_comparison(results_summary, save_path="cnn_model_comparison.png"):
     plt.savefig(save_path, dpi=300)
     print(f"\nPlot saved to '{save_path}'")
     # plt.show()
-
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Process and plot model results.")
-    parser.add_argument("--results_file", "-r", type=str, default="results.json",
-                        help="Path to the JSON file containing model results.")
-    args = parser.parse_args()
-    # Example usage
-    # Load results from a JSON file
-    with open(args.results_file, "r") as f:
-        avg_results = json.load(f)
-
-    plot_results(avg_results)
