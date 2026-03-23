@@ -1,4 +1,3 @@
-import numpy as np
 import argparse
 import joblib
 import torch
@@ -6,6 +5,7 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from models.model_regression import RegressorWrapper
 from utils.train_utils.dataset import LPBSDataset
 from utils.plot_utils.presents_results import (
     plot_results,
@@ -15,11 +15,6 @@ from utils.plot_utils.presents_results import (
 
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import GroupKFold
-from sklearn.metrics import (
-    accuracy_score,
-    f1_score,
-)
-import warnings
 
 from models.model_lr import LogisticRegWrapper
 from models.model_rocket import RocketWrapper
@@ -33,15 +28,12 @@ def train_models(
     models_config: dict,
     pytorch_dir="preprocessed_data/",
     augment_data=None,
-    prod=False,
     scaler="standard",
 ):
     # Create a results dictionary to store metrics for each model
     models_results = {}
     for model_name in models_config:
         models_results[model_name] = {}
-
-    best_overall_f1 = -1
     
     scaler_config_path = os.path.join(pytorch_dir, "scaler_config.json")
 
@@ -84,28 +76,10 @@ def train_models(
         # Train and evaluate each model
         for model_name, model in model_instances.items():
             print(f"Training model: {model_name}")
-            acc, prec, rec, f1, trained_model = model.train_on_fold(
-                train_loader, test_loader
-            )
+            measures, _ = model.train_on_fold(train_loader, test_loader)
 
-            if prod:
-                if f1 > best_overall_f1:
-                    best_overall_f1 = f1
-                    print(f"-> New best model found: {model_name} (F1={f1:.4f})")
-                    if isinstance(trained_model, torch.nn.Module):
-                        torch.save(trained_model.state_dict(), "best_model.pth")
-                    else:
-                        joblib.dump(trained_model, "best_model.pkl")
-
-            models_results[model_name][f"fold_{fold_idx}"] = {
-                "acc": acc,
-                "prec": prec,
-                "rec": rec,
-                "f1": f1,
-            }
-            print(
-                f"Results for {model_name} fold {fold_idx+1}: acc={acc:.4f}, f1={f1:.4f}"
-            )
+            models_results[model_name][f"fold_{fold_idx}"] = measures
+            print(f"Results for {model_name} fold {fold_idx+1}: {measures}")
 
     return models_results
 
@@ -154,56 +128,66 @@ if __name__ == "__main__":
 
     # Example usage
     models_config = {
-        # "logReg": {
-        #     "model_class": LogisticRegWrapper,
-        #     "params": {"lr_params": {"max_iter": 1000, "use_scaler": True}}
+        # "tail_mil_32b_64e_1e3": {
+        #     "model_class": TailMilClassificationWrapper,
+        #     "measure_of_interest": "f1",
+        #     "params": {
+        #         "batch_size": 32,
+        #         "embed_dim": 64,
+        #         "lr": 1e-3,
+        #         "patience": 75,
+        #         "epochs": 200,
+        #         "device": "cuda",
+        #     }
         # },
-        # "rocket_500": {
-        #     "model_class": RocketWrapper,
-        #     "params": {"rocket_params": {"num_kernels": 500, "use_scaler": True}}
+        # "tail_mil_32b_32e_1e3": {
+        #     "model_class": TailMilClassificationWrapper,
+        #     "measure_of_interest": "f1",
+        #     "params": {
+        #         "batch_size": 32,
+        #         "embed_dim": 32,
+        #         "lr": 1e-3,
+        #         "patience": 75,
+        #         "epochs": 200,
+        #         "device": "cuda",
+        #     }
         # },
-        "tail_mil_32b_64e_1e3": {
-            "model_class": TailMilClassificationWrapper,
+        # "tail_mil_32b_16e_1e3": {
+        #     "model_class": TailMilClassificationWrapper,
+        #     "measure_of_interest": "f1",
+        #     "params": {
+        #         "batch_size": 32,
+        #         "embed_dim": 16,
+        #         "lr": 1e-3,
+        #         "patience": 75,
+        #         "epochs": 200,
+        #         "device": "cuda",
+        #     }
+        # },
+        # "tail_mil_64b_32e_1e4": {
+        #     "model_class": TailMilClassificationWrapper,
+        #     "measure_of_interest": "f1",
+        #     "params": {
+        #         "batch_size": 64,
+        #         "embed_dim": 32,
+        #         "lr": 1e-4,
+        #         "patience": 75,
+        #         "epochs": 200,
+        #         "device": "cuda",
+        #     }
+        # },
+        "Regressor": {
+            "model_class": RegressorWrapper,
+            "measure_of_interest": "huber",
             "params": {
-                "batch_size": 32,
+                "batch_size": 8,
+                "loss": "huber",
                 "embed_dim": 64,
-                "lr": 1e-3,
-                "patience": 50,
-                "epochs": 200,
-                "device": "cuda",
-            }
-        },
-        "tail_mil_32b_32e_1e3": {
-            "model_class": TailMilClassificationWrapper,
-            "params": {
-                "batch_size": 32,
-                "embed_dim": 32,
-                "lr": 1e-3,
-                "patience": 50,
-                "epochs": 200,
-                "device": "cuda",
-            }
-        },
-        "tail_mil_32b_32e_1e3": {
-            "model_class": TailMilClassificationWrapper,
-            "params": {
-                "batch_size": 32,
-                "embed_dim": 16,
-                "lr": 1e-3,
-                "patience": 50,
-                "epochs": 200,
-                "device": "cuda",
-            }
-        },
-        "tail_mil_64b_32e_1e4": {
-            "model_class": TailMilClassificationWrapper,
-            "params": {
-                "batch_size": 64,
-                "embed_dim": 32,
                 "lr": 1e-4,
-                "patience": 50,
-                "epochs": 200,
+                "patience": 10,
+                "epochs": 100,
                 "device": "cuda",
+                "segment_len": 900,
             }
         },
     }
@@ -212,7 +196,6 @@ if __name__ == "__main__":
         models_config,
         pytorch_dir=args.pytorch_dir,
         augment_data=args.augment_data,
-        prod=args.prod,
         scaler=args.scaler
     )
 

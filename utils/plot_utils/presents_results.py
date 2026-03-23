@@ -8,7 +8,7 @@ def calculate_average_results(results):
     avg_results = {}
     for model_name, folds in results.items():
         avg_results[model_name] = {}
-        for metric in ["acc", "prec", "rec", "f1"]:
+        for metric in folds[next(iter(folds))].keys():  # Get metric names from the first fold
             values = [f[metric] for f in folds.values()]
             avg_results[model_name][metric] = np.mean(values)
             avg_results[model_name][f"{metric}_std"] = np.std(values)
