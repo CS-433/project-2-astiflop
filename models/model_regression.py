@@ -88,8 +88,8 @@ class RegressorWrapper(BaseModel):
         Y_staircase = []
         
         # Sampling parameters
-        num_samples_train = 2
-        val_stride = 25         # Striding in validation for reproducibility
+        num_samples_train = 4
+        val_stride = 10         # Striding in validation for reproducibility
         
         for i in range(B):
             T_actual = int(total_lengths[i].item())
@@ -171,6 +171,7 @@ class RegressorWrapper(BaseModel):
 
 
             if val_loss < best_loss:
+                best_loss = val_loss
                 epochs_no_improve = 0
                 best_model_state = model.state_dict()
             else:
