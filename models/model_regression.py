@@ -8,6 +8,8 @@ from .base import BaseModel
 from .utils.cnn_features_extractor import CNNFeatureExtractor
 from .utils.gated_attention import GatedAttention
 
+import random
+
 class CNNBiLSTMMLPRegressor(nn.Module):
     def __init__(self, segment_len, embed_dim=512, dropout=0.3):
         super().__init__()
@@ -78,33 +80,44 @@ if __name__ == "__main__":
 
 
 class RegressorWrapper(BaseModel): 
-    def _forward_pass(self, model, batch_data, total_lengths, criterion, device):
-        batch_data = batch_data.cpu()
+    def _forward_pass(self, model, batch_data, total_lengths, criterion, device, is_training=True):
         B, T_max, V, L = batch_data.shape
-                
-        # Sliding window training: Create staircase of segments and corresponding RUL targets
+        batch_data = batch_data.cpu()
+
         X_staircase = []
         Y_staircase = []
+        
+        # Sampling parameters
+        num_samples_train = 2
+        val_stride = 25         # Striding in validation for reproducibility
+        
         for i in range(B):
-            full_trajectory = batch_data[i] # (T_max, V, L)
             T_actual = int(total_lengths[i].item())
+            full_trajectory = batch_data[i] # (T_max, V, L) sur CPU
             
-            for t in range(1, T_actual + 1):
-                segment_sequence = full_trajectory[:t] 
-                rul_target = T_actual - t
-                X_staircase.append(segment_sequence)
-                Y_staircase.append(rul_target)
+            if is_training:
+                if T_actual <= num_samples_train:
+                    indices = list(range(1, T_actual + 1))
+                else:
+                    indices = random.sample(range(1, T_actual + 1), num_samples_train)
+            else:
+                indices = list(range(1, T_actual + 1, val_stride))
+                if indices[-1] != T_actual: indices.append(T_actual) # Toujours inclure la fin
 
-        X_padded = pad_sequence(X_staircase, batch_first=True).to(device) 
+            for t in indices:
+                X_staircase.append(full_trajectory[:t]) 
+                Y_staircase.append(float(T_actual - t))
+
+        X_padded = pad_sequence(X_staircase, batch_first=True).to(device)
         targets = torch.tensor(Y_staircase, device=device).float()
         
-        # attention mask
+        # Attention mask
         indices = torch.arange(X_padded.size(1), device=device).expand(len(X_staircase), -1)
         lengths_tensor = torch.tensor([len(x) for x in X_staircase], device=device).unsqueeze(1)
         mask = (indices < lengths_tensor).float()
 
         # Forward pass
-        preds, _, _ = model(X_padded, mask=mask) # Passer le masque à l'attention
+        preds, _, _ = model(X_padded, mask=mask)
         loss = criterion(preds, targets)
 
         return loss
@@ -138,7 +151,7 @@ class RegressorWrapper(BaseModel):
             train_loss = 0.0
 
             for batch_data, _, total_lengths in training_loader:
-                loss = self._forward_pass(model, batch_data, total_lengths, criterion, device)
+                loss = self._forward_pass(model, batch_data, total_lengths, criterion, device, is_training=True)
                 
                 optimizer.zero_grad()
                 loss.backward()
@@ -152,7 +165,7 @@ class RegressorWrapper(BaseModel):
             val_loss = 0.0
             with torch.no_grad():
                 for X, _, total_segment_len in validation_loader:
-                    loss = self._forward_pass(model, X, total_segment_len, criterion, device)
+                    loss = self._forward_pass(model, X, total_segment_len, criterion, device, is_training=False)
                     val_loss += loss.item()
             val_loss /= len(validation_loader)
 

@@ -180,7 +180,7 @@ if __name__ == "__main__":
             "model_class": RegressorWrapper,
             "measure_of_interest": "huber",
             "params": {
-                "batch_size": 8,
+                "batch_size": 2,
                 "loss": "huber",
                 "embed_dim": 64,
                 "lr": 1e-4,
