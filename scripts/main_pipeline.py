@@ -5,7 +5,6 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.model_regression import RegressorWrapper
 from utils.train_utils.dataset import LPBSDataset
 from utils.plot_utils.presents_results import (
     plot_results,
@@ -22,6 +21,7 @@ from models.model_rf import RandomForestWrapper
 from models.model_xgboost import XGBoostWrapper
 from models.model_svm import SVMWrapper
 from models.model_tail_mil import TailMilClassificationWrapper
+from models.model_regression import RegressorWrapper
 
 
 def train_models(
@@ -129,68 +129,63 @@ if __name__ == "__main__":
 
     # Example usage
     models_config = {
-        # "tail_mil_32b_64e_1e3": {
-        #     "model_class": TailMilClassificationWrapper,
-        #     "measure_of_interest": "f1",
-        #     "params": {
-        #         "batch_size": 32,
-        #         "embed_dim": 64,
-        #         "lr": 1e-3,
-        #         "patience": 75,
-        #         "epochs": 200,
-        #         "device": "cuda",
-        #     }
-        # },
-        # "tail_mil_32b_32e_1e3": {
-        #     "model_class": TailMilClassificationWrapper,
-        #     "measure_of_interest": "f1",
-        #     "params": {
-        #         "batch_size": 32,
-        #         "embed_dim": 32,
-        #         "lr": 1e-3,
-        #         "patience": 75,
-        #         "epochs": 200,
-        #         "device": "cuda",
-        #     }
-        # },
-        # "tail_mil_32b_16e_1e3": {
-        #     "model_class": TailMilClassificationWrapper,
-        #     "measure_of_interest": "f1",
-        #     "params": {
-        #         "batch_size": 32,
-        #         "embed_dim": 16,
-        #         "lr": 1e-3,
-        #         "patience": 75,
-        #         "epochs": 200,
-        #         "device": "cuda",
-        #     }
-        # },
-        # "tail_mil_64b_32e_1e4": {
-        #     "model_class": TailMilClassificationWrapper,
-        #     "measure_of_interest": "f1",
-        #     "params": {
-        #         "batch_size": 64,
-        #         "embed_dim": 32,
-        #         "lr": 1e-4,
-        #         "patience": 75,
-        #         "epochs": 200,
-        #         "device": "cuda",
-        #     }
-        # },
-        "Regressor": {
-            "model_class": RegressorWrapper,
-            "measure_of_interest": "huber",
+        "tail_mil_32b_64e_1e3": {
+            "model_class": TailMilClassificationWrapper,
             "params": {
-                "batch_size": 2,
-                "loss": "huber",
+                "batch_size": 32,
                 "embed_dim": 64,
-                "lr": 1e-4,
-                "patience": 10,
-                "epochs": 100,
-                "device": "cuda:1",
-                "segment_len": 900,
+                "lr": 1e-3,
+                "patience": 75,
+                "epochs": 200,
+                "device": "cuda",
             }
         },
+        # "tail_mil_32b_32e_1e3": {
+        #     "model_class": TailMilClassificationWrapper,
+        #     "params": {
+        #         "batch_size": 32,
+        #         "embed_dim": 32,
+        #         "lr": 1e-3,
+        #         "patience": 75,
+        #         "epochs": 200,
+        #         "device": "cuda",
+        #     }
+        # },
+        "tail_mil_32b_16e_1e3": {
+            "model_class": TailMilClassificationWrapper,
+            "params": {
+                "batch_size": 32,
+                "embed_dim": 16,
+                "lr": 1e-3,
+                "patience": 75,
+                "epochs": 200,
+                "device": "cuda",
+            }
+        },
+        "tail_mil_8b_32e_1e4": {
+            "model_class": TailMilClassificationWrapper,
+            "params": {
+                "batch_size": 8,
+                "embed_dim": 32,
+                "lr": 1e-4,
+                "patience": 75,
+                "epochs": 200,
+                "device": "cuda",
+            }
+        },
+        # "Regressor": {
+        #     "model_class": RegressorWrapper,
+        #     "params": {
+        #         "batch_size": 2,
+        #         "loss": "huber",
+        #         "embed_dim": 64,
+        #         "lr": 1e-4,
+        #         "patience": 10,
+        #         "epochs": 100,
+        #         "device": "cuda",
+        #         "segment_len": 900,
+        #     }
+        # },
     }
     
     results = train_models(
