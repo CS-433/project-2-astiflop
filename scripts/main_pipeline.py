@@ -42,7 +42,8 @@ def train_models(
         pytorch_dir, 
         scaler_type=scaler, 
         mode="train", 
-        scaler_config_path=scaler_config_path
+        scaler_config_path=scaler_config_path,
+        device=models_config[next(iter(models_config))]["params"]["device"]
     )
     if augment_data:
         dataset.augment_data(n_augmentations_per_sample=augment_data)
@@ -186,7 +187,7 @@ if __name__ == "__main__":
                 "lr": 1e-4,
                 "patience": 10,
                 "epochs": 100,
-                "device": "cuda",
+                "device": "cuda:1",
                 "segment_len": 900,
             }
         },
