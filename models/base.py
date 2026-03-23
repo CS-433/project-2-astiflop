@@ -13,10 +13,7 @@ class BaseModel(ABC):
         Should return accuracy, precision, recall, F1 score, and the trained model instance.
 
         Returns:
-            acc (float): Accuracy of the model on validation data.
-            prec (float): Precision of the model on validation data.
-            rec (float): Recall of the model on validation data.
-            f1 (float): F1 score of the model on validation data.
+            measures (dict): A dictionary containing measures of interest, like accuracy, precision, recall, and F1 score.
             trained_model (object): The trained model instance.
         """
         pass

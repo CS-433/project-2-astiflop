@@ -467,6 +467,18 @@ class LPBSDataset(Dataset):
         if scaler_type != "none":
             self._apply_normalization(mode, scaler_config_path, scaler_type)
 
+        # Compute min and max of x and y
+        all_data = torch.stack(self.data) # This might be large
+        x_idx = FEATURES_PYTORCH.index("X") if "X" in FEATURES_PYTORCH else None
+        y_idx = FEATURES_PYTORCH.index("Y") if "Y" in FEATURES_PYTORCH else None
+
+        self.x_min = all_data[:, :, x_idx, :].min().item() if x_idx is not None else None
+        self.x_max = all_data[:, :, x_idx, :].max().item() if x_idx is not None else None
+        self.y_min = all_data[:, :, y_idx, :].min().item() if y_idx is not None else None
+        self.y_max = all_data[:, :, y_idx, :].max().item() if y_idx is not None else None
+
+
+
     def _scan_folder(self, root_path):
         """Helper function to scan a folder and retrieve file paths and treatments."""
         class_map = {"TERBINAFINE- (control)": 0, "TERBINAFINE+": 1, "NoTerbinafine": 0, "Terbinafine": 1}
@@ -609,10 +621,10 @@ class LPBSDataset(Dataset):
                 stats = json.load(f)
         
         # 2. Normalization
-        mean = torch.tensor(stats["mean"]).view(1, 1, -1, 1)
-        std = torch.tensor(stats["std"]).view(1, 1, -1, 1)
-        min_v = torch.tensor(stats["min"]).view(1, 1, -1, 1)
-        max_v = torch.tensor(stats["max"]).view(1, 1, -1, 1)
+        mean = torch.tensor(stats["mean"], device=self.device).view(1, 1, -1, 1)
+        std = torch.tensor(stats["std"], device=self.device).view(1, 1, -1, 1)
+        min_v = torch.tensor(stats["min"], device=self.device).view(1, 1, -1, 1)
+        max_v = torch.tensor(stats["max"], device=self.device).view(1, 1, -1, 1)
         
         new_data = []
         for i in range(len(self.data)):
@@ -668,8 +680,10 @@ class LPBSDataset(Dataset):
             return new_tensor
 
         def _apply_offset(self, tensor):
-            dx = np.random.uniform(-100, 100)
-            dy = np.random.uniform(-100, 100)
+            max_offset_x = (self.x_max - self.x_min) * 0.25
+            max_offset_y = (self.y_max - self.y_min) * 0.25
+            dx = np.random.uniform(-max_offset_x, max_offset_x)
+            dy = np.random.uniform(-max_offset_y, max_offset_y)
             
             new_tensor = tensor.clone()
             # Mask for padding (assuming 0 padding)
@@ -710,8 +724,8 @@ class LPBSDataset(Dataset):
                     augmented_tensor = _apply_offset(self, augmented_tensor)
                     
                 # Apply scaling with p=0.5
-                if np.random.rand() < 0.5:
-                    augmented_tensor = _apply_scaling(self, augmented_tensor)
+                # if np.random.rand() < 0.5:
+                #     augmented_tensor = _apply_scaling(self, augmented_tensor)
                     
                 augmented_data.append(augmented_tensor)
                 augmented_treatments.append(treatment)

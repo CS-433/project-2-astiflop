@@ -8,7 +8,7 @@ def calculate_average_results(results):
     avg_results = {}
     for model_name, folds in results.items():
         avg_results[model_name] = {}
-        for metric in ["acc", "prec", "rec", "f1"]:
+        for metric in folds[next(iter(folds))].keys():  # Get metric names from the first fold
             values = [f[metric] for f in folds.values()]
             avg_results[model_name][metric] = np.mean(values)
             avg_results[model_name][f"{metric}_std"] = np.std(values)
@@ -115,17 +115,3 @@ def plot_cnn_comparison(results_summary, save_path="cnn_model_comparison.png"):
     plt.savefig(save_path, dpi=300)
     print(f"\nPlot saved to '{save_path}'")
     # plt.show()
-
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Process and plot model results.")
-    parser.add_argument("--results_file", "-r", type=str, default="results.json",
-                        help="Path to the JSON file containing model results.")
-    args = parser.parse_args()
-    # Example usage
-    # Load results from a JSON file
-    with open(args.results_file, "r") as f:
-        avg_results = json.load(f)
-
-    plot_results(avg_results)
