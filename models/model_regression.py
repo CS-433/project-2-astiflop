@@ -4,9 +4,9 @@ from torch.nn.utils.rnn import pad_sequence
 
 from tqdm import tqdm
 
-from base import BaseModel
-from utils.cnn_features_extractor import CNNFeatureExtractor
-from utils.gated_attention import GatedAttention
+from .base import BaseModel
+from .utils.cnn_features_extractor import CNNFeatureExtractor
+from .utils.gated_attention import GatedAttention
 
 class CNNBiLSTMMLPRegressor(nn.Module):
     def __init__(self, segment_len, embed_dim=512, dropout=0.3):
