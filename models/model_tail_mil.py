@@ -245,7 +245,8 @@ class TailMilClassificationWrapper(BaseModel):
                 epochs_no_improve += 1
             
             # Summary of epoch:
-            tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else ''}")
+            if epoch % 10 == 0:  # Print every 10 epochs
+                tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else f"(best: {best_val_acc:.4f})"}")
             
             # Early stopping
             if epochs_no_improve >= patience or avg_train_loss < 1e-3:
