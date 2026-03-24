@@ -52,7 +52,17 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         seg_emb = seg_emb.view(B, T, self.embed_dim) # (B, T, embed_dim)
         
         # == BiLSTM ==
-        lstm_out, _ = self.bilstm(seg_emb)  # (B, T, embed_dim)
+        if mask is not None:
+            lengths = mask.sum(dim=1).cpu().to(torch.int64)
+            packed_emb = torch.nn.utils.rnn.pack_padded_sequence(
+                seg_emb, lengths, batch_first=True, enforce_sorted=False
+            )
+            lstm_out_packed, _ = self.bilstm(packed_emb)
+            lstm_out, _ = torch.nn.utils.rnn.pad_packed_sequence(
+                lstm_out_packed, batch_first=True, total_length=T
+            )
+        else:
+            lstm_out, _ = self.bilstm(seg_emb)  # (B, T, embed_dim)
         
         # == Segment Attention ==
         s_weights = self.segment_attention(lstm_out, mask=mask)
