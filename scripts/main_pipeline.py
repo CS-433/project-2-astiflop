@@ -38,6 +38,7 @@ def train_models(
     scaler_config_path = os.path.join(pytorch_dir, "scaler_config.json")
 
     # Load the dataset
+    print(f"Loaded dataset on device {dataset.device}.")
     dataset = LPBSDataset(
         pytorch_dir, 
         scaler_type=scaler, 
@@ -52,7 +53,7 @@ def train_models(
     model_instances = {}
 
     for model_name, config in models_config.items():
-        print(f"Initializing {model_name}...")
+        print(f"Initializing {model_name} on device {config['params']['device']}...")
         model_cls = config["model_class"]
         params = config.get("params", {})
         model = model_cls(params)
