@@ -62,20 +62,18 @@ def train_models(
 
     for fold_idx, (worm_train_indices, worm_test_indices) in enumerate(gkf.split(dataset, groups=dataset.worm_ids)):
         print(f"\n=== Fold {fold_idx+1} ===")
-        
-        train_loader = DataLoader(
-            Subset(dataset, indices=worm_train_indices), 
-            batch_size=32, 
-            shuffle=False
-        )
-        test_loader = DataLoader(
-            Subset(dataset, indices=worm_test_indices), 
-            batch_size=32, 
-            shuffle=False
-        )
-
         # Train and evaluate each model
         for model_name, model in model_instances.items():
+            train_loader = DataLoader(
+                Subset(dataset, indices=worm_train_indices), 
+                batch_size=models_config[model_name]["params"]["batch_size"], 
+                shuffle=True
+            )
+            test_loader = DataLoader(
+                Subset(dataset, indices=worm_test_indices), 
+                batch_size=models_config[model_name]["params"]["batch_size"], 
+                shuffle=True
+            )
             print(f"Training model: {model_name}")
             measures, _ = model.train_on_fold(train_loader, test_loader)
 
