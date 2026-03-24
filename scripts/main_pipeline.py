@@ -129,17 +129,17 @@ if __name__ == "__main__":
 
     # Example usage
     models_config = {
-        "tail_mil_32b_64e_1e3": {
-            "model_class": TailMilClassificationWrapper,
-            "params": {
-                "batch_size": 32,
-                "embed_dim": 64,
-                "lr": 1e-3,
-                "patience": 75,
-                "epochs": 200,
-                "device": "cuda",
-            }
-        },
+        # "tail_mil_32b_64e_1e3": {
+        #     "model_class": TailMilClassificationWrapper,
+        #     "params": {
+        #         "batch_size": 32,
+        #         "embed_dim": 64,
+        #         "lr": 1e-3,
+        #         "patience": 75,
+        #         "epochs": 200,
+        #         "device": "cuda",
+        #     }
+        # },
         # "tail_mil_32b_32e_1e3": {
         #     "model_class": TailMilClassificationWrapper,
         #     "params": {
@@ -151,28 +151,28 @@ if __name__ == "__main__":
         #         "device": "cuda",
         #     }
         # },
-        "tail_mil_32b_16e_1e3": {
-            "model_class": TailMilClassificationWrapper,
-            "params": {
-                "batch_size": 32,
-                "embed_dim": 16,
-                "lr": 1e-3,
-                "patience": 75,
-                "epochs": 200,
-                "device": "cuda",
-            }
-        },
-        "tail_mil_8b_32e_1e4": {
-            "model_class": TailMilClassificationWrapper,
-            "params": {
-                "batch_size": 8,
-                "embed_dim": 32,
-                "lr": 1e-4,
-                "patience": 75,
-                "epochs": 200,
-                "device": "cuda",
-            }
-        },
+        # "tail_mil_32b_16e_1e3": {
+        #     "model_class": TailMilClassificationWrapper,
+        #     "params": {
+        #         "batch_size": 32,
+        #         "embed_dim": 16,
+        #         "lr": 1e-3,
+        #         "patience": 75,
+        #         "epochs": 200,
+        #         "device": "cuda",
+        #     }
+        # },
+        # "tail_mil_8b_32e_1e4": {
+        #     "model_class": TailMilClassificationWrapper,
+        #     "params": {
+        #         "batch_size": 8,
+        #         "embed_dim": 32,
+        #         "lr": 1e-4,
+        #         "patience": 75,
+        #         "epochs": 200,
+        #         "device": "cuda",
+        #     }
+        # },
         # "Regressor": {
         #     "model_class": RegressorWrapper,
         #     "params": {
@@ -183,6 +183,48 @@ if __name__ == "__main__":
         #         "patience": 10,
         #         "epochs": 100,
         #         "device": "cuda",
+        #         "segment_len": 900,
+        #     }
+        # },
+        "regr_128e_huber": {
+            "model_class": RegressorWrapper,
+            "measure_of_interest": "huber",
+            "params": {
+                "batch_size": 8,
+                "loss": "huber",
+                "embed_dim": 128,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_huber": {
+            "model_class": RegressorWrapper,
+            "measure_of_interest": "huber",
+            "params": {
+                "batch_size": 8,
+                "loss": "huber",
+                "embed_dim": 64,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        # "regr_64e_mse": {
+        #     "model_class": RegressorWrapper,
+        #     "measure_of_interest": "mse",
+        #     "params": {
+        #         "batch_size": 8,
+        #         "loss": "mse",
+        #         "embed_dim": 64,
+        #         "lr": 1e-4,
+        #         "patience": 25,
+        #         "epochs": 500,
+        #         "device": "cuda:1",
         #         "segment_len": 900,
         #     }
         # },
