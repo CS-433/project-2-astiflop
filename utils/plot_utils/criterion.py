@@ -128,7 +128,7 @@ def compute_total_cumulative_distance(file_path, freq1=500, freq2=100):
     plt.show()
     return cumulative_distances
 
-def compute_total_smooth_cumulative_distance(file_path, freq1=500, freq2=100, smoothing_window=15):
+def compute_total_smooth_cumulative_distance(file_path, freq1=200, freq2=100, smoothing_window=15):
     df = pd.read_csv(file_path)
 
     cumulative_distances_1 = []
@@ -189,7 +189,7 @@ def compute_total_smooth_cumulative_distance(file_path, freq1=500, freq2=100, sm
             colors.append('purple')
 
 
-    plt.figure(figsize=(10, 4))
+    plt.figure(figsize=(9, 4))
     plt.plot(cumulative_distances, linestyle='-', color='black', alpha=0.3)
     plt.scatter(range(len(cumulative_distances)), cumulative_distances, c=colors, s=16, zorder=5)
     plt.title(f"Cumulative Distance - {os.path.basename(file_path)}")
