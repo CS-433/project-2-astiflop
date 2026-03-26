@@ -184,23 +184,8 @@ if __name__ == "__main__":
         #         "segment_len": 900,
         #     }
         # },
-        "regr_128e_huber": {
+        "regr_64e_huber_5e4_bs8": {
             "model_class": RegressorWrapper,
-            "measure_of_interest": "huber",
-            "params": {
-                "batch_size": 8,
-                "loss": "huber",
-                "embed_dim": 128,
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_huber": {
-            "model_class": RegressorWrapper,
-            "measure_of_interest": "huber",
             "params": {
                 "batch_size": 8,
                 "loss": "huber",
@@ -212,9 +197,112 @@ if __name__ == "__main__":
                 "segment_len": 900,
             }
         },
+        "regr_128e_huber_5e4_bs8": {
+            "model_class": RegressorWrapper,
+            "params": {
+                "batch_size": 8,
+                "loss": "huber",
+                "embed_dim": 128,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        "regr_16e_huber_5e4_bs8": {
+            "model_class": RegressorWrapper,
+            "params": {
+                "batch_size": 8,
+                "loss": "huber",
+                "embed_dim": 16,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_mse_5e4_bs8": {
+            "model_class": RegressorWrapper,
+            "params": {
+                "batch_size": 8,
+                "loss": "mse",
+                "embed_dim": 64,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_mae_5e4_bs8": {
+            "model_class": RegressorWrapper,
+            "params": {
+                "batch_size": 8,
+                "loss": "mae",
+                "embed_dim": 64,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_mae_1e3_bs8": {
+            "model_class": RegressorWrapper,
+            "params": {
+                "batch_size": 8,
+                "loss": "mae",
+                "embed_dim": 64,
+                "lr": 1e-3,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_huber_1e3_bs8": {
+            "model_class": RegressorWrapper,
+            "params": {
+                "batch_size": 8,
+                "loss": "huber",
+                "embed_dim": 64,
+                "lr": 1e-3,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_huber_5e4_bs4": {
+            "model_class": RegressorWrapper,
+            "params": {
+                "batch_size": 4,
+                "loss": "huber",
+                "embed_dim": 64,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_huber_5e4_bs16": {
+            "model_class": RegressorWrapper,
+            "params": {
+                "batch_size": 16,
+                "loss": "huber",
+                "embed_dim": 64,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
         # "regr_64e_mse": {
         #     "model_class": RegressorWrapper,
-        #     "measure_of_interest": "mse",
         #     "params": {
         #         "batch_size": 8,
         #         "loss": "mse",
