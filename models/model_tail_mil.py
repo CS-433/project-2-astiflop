@@ -231,10 +231,7 @@ class TailMilClassificationWrapper(BaseModel):
             val_f1 = f1_score(val_labels, val_preds_binary)
             val_prec = precision_score(val_labels, val_preds_binary, zero_division=0)
             val_rec = recall_score(val_labels, val_preds_binary, zero_division=0)
-            try:
-                val_auc = roc_auc_score(val_labels, val_preds)
-            except:
-                val_auc = 0.5
+
 
 
             if val_acc > best_val_acc:
@@ -242,20 +239,20 @@ class TailMilClassificationWrapper(BaseModel):
                 best_val_f1 = val_f1
                 best_val_prec = val_prec
                 best_val_rec = val_rec
-                best_val_auc = val_auc
                 epochs_no_improve = 0
                 best_model_state = model.state_dict()
             else:
                 epochs_no_improve += 1
             
             # Summary of epoch:
-            tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else ''}")
+            if epoch % 10 == 0:  # Print every 10 epochs
+                tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else f"(best: {best_val_acc:.4f})"}")
             
             # Early stopping
-            if epochs_no_improve >= patience:
+            if epochs_no_improve >= patience or avg_train_loss < 1e-3:
                 break
 
         if best_model_state is not None:
             model.load_state_dict(best_model_state)
 
-        return best_val_acc, best_val_prec, best_val_rec, best_val_f1, model
+        return {"acc": best_val_acc, "prec": best_val_prec, "rec": best_val_rec, "f1": best_val_f1}, model

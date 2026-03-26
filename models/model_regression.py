@@ -52,7 +52,17 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         seg_emb = seg_emb.view(B, T, self.embed_dim) # (B, T, embed_dim)
         
         # == BiLSTM ==
-        lstm_out, _ = self.bilstm(seg_emb)  # (B, T, embed_dim)
+        if mask is not None:
+            lengths = mask.sum(dim=1).cpu().to(torch.int64)
+            packed_emb = torch.nn.utils.rnn.pack_padded_sequence(
+                seg_emb, lengths, batch_first=True, enforce_sorted=False
+            )
+            lstm_out_packed, _ = self.bilstm(packed_emb)
+            lstm_out, _ = torch.nn.utils.rnn.pad_packed_sequence(
+                lstm_out_packed, batch_first=True, total_length=T
+            )
+        else:
+            lstm_out, _ = self.bilstm(seg_emb)  # (B, T, embed_dim)
         
         # == Segment Attention ==
         s_weights = self.segment_attention(lstm_out, mask=mask)
@@ -80,7 +90,7 @@ if __name__ == "__main__":
 
 
 class RegressorWrapper(BaseModel): 
-    def _forward_pass(self, model, batch_data, total_lengths, criterion, device, is_training=True):
+    def _forward_pass(self, model, batch_data, total_lengths, criterion, device, max_segment_number, is_training=True):
         B, T_max, V, L = batch_data.shape
         batch_data = batch_data.cpu()
 
@@ -88,8 +98,8 @@ class RegressorWrapper(BaseModel):
         Y_staircase = []
         
         # Sampling parameters
-        num_samples_train = 2
-        val_stride = 25         # Striding in validation for reproducibility
+        num_samples_train = 4
+        val_stride = 10         # Striding in validation for reproducibility
         
         for i in range(B):
             T_actual = int(total_lengths[i].item())
@@ -102,11 +112,13 @@ class RegressorWrapper(BaseModel):
                     indices = random.sample(range(1, T_actual + 1), num_samples_train)
             else:
                 indices = list(range(1, T_actual + 1, val_stride))
-                if indices[-1] != T_actual: indices.append(T_actual) # Toujours inclure la fin
+                if indices[-1] != T_actual: indices.append(T_actual)
 
             for t in indices:
+                y = min(T_actual - t, max_segment_number//3) # Reduce difficulty of the task
+                y = 3*float(y)/max_segment_number # Normalized between 0 and 1 for easier gradients computations
                 X_staircase.append(full_trajectory[:t]) 
-                Y_staircase.append(float(T_actual - t))
+                Y_staircase.append(y) 
 
         X_padded = pad_sequence(X_staircase, batch_first=True).to(device)
         targets = torch.tensor(Y_staircase, device=device).float()
@@ -131,6 +143,7 @@ class RegressorWrapper(BaseModel):
         segment_len = self.params.get("segment_len", 900)
         loss = self.params.get("loss", "mse")
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        max_segment_number = 150 # Set in the dataset
 
         model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim).to(device) 
         
@@ -151,7 +164,7 @@ class RegressorWrapper(BaseModel):
             train_loss = 0.0
 
             for batch_data, _, total_lengths in training_loader:
-                loss = self._forward_pass(model, batch_data, total_lengths, criterion, device, is_training=True)
+                loss = self._forward_pass(model, batch_data, total_lengths, criterion, device, max_segment_number=max_segment_number, is_training=True)
                 
                 optimizer.zero_grad()
                 loss.backward()
@@ -165,19 +178,21 @@ class RegressorWrapper(BaseModel):
             val_loss = 0.0
             with torch.no_grad():
                 for X, _, total_segment_len in validation_loader:
-                    loss = self._forward_pass(model, X, total_segment_len, criterion, device, is_training=False)
+                    loss = self._forward_pass(model, X, total_segment_len, criterion, device, max_segment_number=max_segment_number, is_training=False)
                     val_loss += loss.item()
             val_loss /= len(validation_loader)
 
 
             if val_loss < best_loss:
+                best_loss = val_loss
                 epochs_no_improve = 0
                 best_model_state = model.state_dict()
             else:
                 epochs_no_improve += 1
             
             # Summary of epoch:
-            tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else ''}")
+            if epoch % 10 == 0:  # Print every 10 epochs
+                tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else ''}")
             
             # Early stopping
             if epochs_no_improve >= patience:
@@ -185,5 +200,7 @@ class RegressorWrapper(BaseModel):
 
         if best_model_state is not None:
             model.load_state_dict(best_model_state)
+            torch.save(model.state_dict(), f"best_regressor_model.pth")
+            print(f"Best model saved with validation loss: {best_loss:.4f}")
 
         return {"best_loss": best_loss}, model

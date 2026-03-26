@@ -5,7 +5,6 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models.model_regression import RegressorWrapper
 from utils.train_utils.dataset import LPBSDataset
 from utils.plot_utils.presents_results import (
     plot_results,
@@ -22,6 +21,7 @@ from models.model_rf import RandomForestWrapper
 from models.model_xgboost import XGBoostWrapper
 from models.model_svm import SVMWrapper
 from models.model_tail_mil import TailMilClassificationWrapper
+from models.model_regression import RegressorWrapper
 
 
 def train_models(
@@ -38,6 +38,7 @@ def train_models(
     scaler_config_path = os.path.join(pytorch_dir, "scaler_config.json")
 
     # Load the dataset
+    print(f"Loaded dataset on device {dataset.device}.")
     dataset = LPBSDataset(
         pytorch_dir, 
         scaler_type=scaler, 
@@ -52,7 +53,7 @@ def train_models(
     model_instances = {}
 
     for model_name, config in models_config.items():
-        print(f"Initializing {model_name}...")
+        print(f"Initializing {model_name} on device {config['params']['device']}...")
         model_cls = config["model_class"]
         params = config.get("params", {})
         model = model_cls(params)
@@ -62,20 +63,18 @@ def train_models(
 
     for fold_idx, (worm_train_indices, worm_test_indices) in enumerate(gkf.split(dataset, groups=dataset.worm_ids)):
         print(f"\n=== Fold {fold_idx+1} ===")
-        
-        train_loader = DataLoader(
-            Subset(dataset, indices=worm_train_indices), 
-            batch_size=32, 
-            shuffle=False
-        )
-        test_loader = DataLoader(
-            Subset(dataset, indices=worm_test_indices), 
-            batch_size=32, 
-            shuffle=False
-        )
-
         # Train and evaluate each model
         for model_name, model in model_instances.items():
+            train_loader = DataLoader(
+                Subset(dataset, indices=worm_train_indices), 
+                batch_size=models_config[model_name]["params"]["batch_size"], 
+                shuffle=True
+            )
+            test_loader = DataLoader(
+                Subset(dataset, indices=worm_test_indices), 
+                batch_size=models_config[model_name]["params"]["batch_size"], 
+                shuffle=True
+            )
             print(f"Training model: {model_name}")
             measures, _ = model.train_on_fold(train_loader, test_loader)
 
@@ -131,7 +130,6 @@ if __name__ == "__main__":
     models_config = {
         # "tail_mil_32b_64e_1e3": {
         #     "model_class": TailMilClassificationWrapper,
-        #     "measure_of_interest": "f1",
         #     "params": {
         #         "batch_size": 32,
         #         "embed_dim": 64,
@@ -143,7 +141,6 @@ if __name__ == "__main__":
         # },
         # "tail_mil_32b_32e_1e3": {
         #     "model_class": TailMilClassificationWrapper,
-        #     "measure_of_interest": "f1",
         #     "params": {
         #         "batch_size": 32,
         #         "embed_dim": 32,
@@ -155,7 +152,6 @@ if __name__ == "__main__":
         # },
         # "tail_mil_32b_16e_1e3": {
         #     "model_class": TailMilClassificationWrapper,
-        #     "measure_of_interest": "f1",
         #     "params": {
         #         "batch_size": 32,
         #         "embed_dim": 16,
@@ -165,11 +161,10 @@ if __name__ == "__main__":
         #         "device": "cuda",
         #     }
         # },
-        # "tail_mil_64b_32e_1e4": {
+        # "tail_mil_8b_32e_1e4": {
         #     "model_class": TailMilClassificationWrapper,
-        #     "measure_of_interest": "f1",
         #     "params": {
-        #         "batch_size": 64,
+        #         "batch_size": 8,
         #         "embed_dim": 32,
         #         "lr": 1e-4,
         #         "patience": 75,
@@ -177,20 +172,61 @@ if __name__ == "__main__":
         #         "device": "cuda",
         #     }
         # },
-        "Regressor": {
+        # "Regressor": {
+        #     "model_class": RegressorWrapper,
+        #     "params": {
+        #         "batch_size": 2,
+        #         "loss": "huber",
+        #         "embed_dim": 64,
+        #         "lr": 1e-4,
+        #         "patience": 10,
+        #         "epochs": 100,
+        #         "device": "cuda",
+        #         "segment_len": 900,
+        #     }
+        # },
+        "regr_128e_huber": {
             "model_class": RegressorWrapper,
             "measure_of_interest": "huber",
             "params": {
-                "batch_size": 2,
+                "batch_size": 8,
                 "loss": "huber",
-                "embed_dim": 64,
-                "lr": 1e-4,
-                "patience": 10,
-                "epochs": 100,
+                "embed_dim": 128,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
                 "device": "cuda:1",
                 "segment_len": 900,
             }
         },
+        "regr_64e_huber": {
+            "model_class": RegressorWrapper,
+            "measure_of_interest": "huber",
+            "params": {
+                "batch_size": 8,
+                "loss": "huber",
+                "embed_dim": 64,
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+        # "regr_64e_mse": {
+        #     "model_class": RegressorWrapper,
+        #     "measure_of_interest": "mse",
+        #     "params": {
+        #         "batch_size": 8,
+        #         "loss": "mse",
+        #         "embed_dim": 64,
+        #         "lr": 1e-4,
+        #         "patience": 25,
+        #         "epochs": 500,
+        #         "device": "cuda:1",
+        #         "segment_len": 900,
+        #     }
+        # },
     }
     
     results = train_models(

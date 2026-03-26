@@ -765,7 +765,7 @@ def preprocess_for_cnn(
 def load_config(data_dir):
     config_path = os.path.join(data_dir, "config.json")
     if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file not found in {data_dir}. A config.json file is required with 'control_folder', 'treated_folder', and 'lifespan_file' keys.")
+        raise FileNotFoundError(f"Config file not found in {data_dir}. A config.json file is required with 'control_folder' and 'treated_folder' keys.")
     
     with open(config_path, "r") as f:
         config = pd.read_json(config_path, typ='series')
@@ -847,12 +847,12 @@ def calculate_and_save_stats(output_dir, speed_column="ComputedSpeed_frames"):
 def parse_args():
     parser = argparse.ArgumentParser(description="Process files with options.")
     parser.add_argument("data_dir", type=str, help="Root directory containing data and config.json")
-    parser.add_argument("--speed-cap", type=float, default=4, help="Max speed cap.")
+    parser.add_argument("--output-dir", type=str, default="preprocessed_data/", help="Output for CSVs.")
     parser.add_argument(
-        "--distance-threshold", type=float, default=16, help="Distance threshold."
+        "--speed-cap", type=float, default=4, help="Max speed cap."
     )
     parser.add_argument(
-        "--output-dir", type=str, default="preprocessed_data/", help="Output for CSVs."
+        "--distance-threshold", type=float, default=16, help="Distance threshold."
     )
     parser.add_argument(
         "--cnn-output-dir", type=str, default="cnn_dataset/", help="Output for Images."
