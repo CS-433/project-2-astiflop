@@ -50,20 +50,18 @@ def train_models(
     if augment_data:
         dataset.augment_data(n_augmentations_per_sample=augment_data)
 
-    # Instantiate models and load data
-    model_instances = {}
-
-    for model_name, config in models_config.items():
-        print(f"Initializing {model_name} on device {config['params']['device']}...")
-        model_cls = config["model_class"]
-        params = config.get("params", {})
-        model = model_cls(params)
-        model_instances[model_name] = model
-
     gkf = GroupKFold(n_splits=5)
-
     for fold_idx, (worm_train_indices, worm_test_indices) in enumerate(gkf.split(dataset, groups=dataset.worm_ids)):
         print(f"\n=== Fold {fold_idx+1} ===")
+        
+        # Instantiate fresh models for each fold
+        model_instances = {}
+        for model_name, config in models_config.items():
+            model_cls = config["model_class"]
+            params = config.get("params", {})
+            model = model_cls(params)
+            model_instances[model_name] = model
+        
         # Train and evaluate each model
         for model_name, model in model_instances.items():
             train_loader = DataLoader(
