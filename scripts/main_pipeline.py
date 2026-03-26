@@ -38,13 +38,14 @@ def train_models(
     scaler_config_path = os.path.join(pytorch_dir, "scaler_config.json")
 
     # Load the dataset
-    print(f"Loaded dataset on device {dataset.device}.")
+    device = models_config[next(iter(models_config))]["params"]["device"]
+    print(f"Loading dataset on device {device}.")
     dataset = LPBSDataset(
         pytorch_dir, 
         scaler_type=scaler, 
         mode="train", 
         scaler_config_path=scaler_config_path,
-        device=models_config[next(iter(models_config))]["params"]["device"]
+        device=device
     )
     if augment_data:
         dataset.augment_data(n_augmentations_per_sample=augment_data)
