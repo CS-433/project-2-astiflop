@@ -9,6 +9,7 @@ from .utils.cnn_features_extractor import CNNFeatureExtractor
 from .utils.gated_attention import GatedAttention
 
 import random
+import time
 
 class CNNBiLSTMMLPRegressor(nn.Module):
     def __init__(self, segment_len, embed_dim=512, dropout=0.3):
@@ -90,7 +91,7 @@ if __name__ == "__main__":
 
 
 class RegressorWrapper(BaseModel): 
-    def _forward_pass(self, model, batch_data, total_lengths, criterion, device, max_segment_number, is_training=True):
+    def _forward_pass(self, model, batch_data, total_lengths, criterion, comparison_criterion, device, max_segment_number, is_training=True):
         B, T_max, V, L = batch_data.shape
         batch_data = batch_data.cpu()
 
@@ -131,6 +132,9 @@ class RegressorWrapper(BaseModel):
         # Forward pass
         preds, _, _ = model(X_padded, mask=mask)
         loss = criterion(preds, targets)
+        if not is_training and comparison_criterion is not None:
+            comparison_loss = comparison_criterion(preds, targets)
+            return loss, comparison_loss
 
         return loss
 
@@ -156,6 +160,9 @@ class RegressorWrapper(BaseModel):
             criterion = nn.SmoothL1Loss()
 
         best_loss = float('inf')
+        comparison_criterion = nn.MSELoss()
+        best_comparison_loss = float('inf')
+
         epochs_no_improve = 0
         best_model_state = None
 
@@ -164,7 +171,7 @@ class RegressorWrapper(BaseModel):
             train_loss = 0.0
 
             for batch_data, _, total_lengths in training_loader:
-                loss = self._forward_pass(model, batch_data, total_lengths, criterion, device, max_segment_number=max_segment_number, is_training=True)
+                loss = self._forward_pass(model, batch_data, total_lengths, criterion, None, device, max_segment_number=max_segment_number, is_training=True)
                 
                 optimizer.zero_grad()
                 loss.backward()
@@ -176,11 +183,14 @@ class RegressorWrapper(BaseModel):
             # Validation
             model.eval()
             val_loss = 0.0
+            comparison_loss = 0.0
             with torch.no_grad():
                 for X, _, total_segment_len in validation_loader:
-                    loss = self._forward_pass(model, X, total_segment_len, criterion, device, max_segment_number=max_segment_number, is_training=False)
+                    loss, comparison = self._forward_pass(model, X, total_segment_len, criterion, comparison_criterion, device, max_segment_number=max_segment_number, is_training=False)
                     val_loss += loss.item()
+                    comparison_loss += comparison.item()
             val_loss /= len(validation_loader)
+            comparison_loss /= len(validation_loader)
 
 
             if val_loss < best_loss:
@@ -189,10 +199,13 @@ class RegressorWrapper(BaseModel):
                 best_model_state = model.state_dict()
             else:
                 epochs_no_improve += 1
+
+            if comparison_loss < best_comparison_loss:
+                best_comparison_loss = comparison_loss
             
             # Summary of epoch:
             if epoch % 10 == 0:  # Print every 10 epochs
-                tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else ''}")
+                tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}, Comparison Loss: {comparison_loss:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else ''}")
             
             # Early stopping
             if epochs_no_improve >= patience:
@@ -200,7 +213,8 @@ class RegressorWrapper(BaseModel):
 
         if best_model_state is not None:
             model.load_state_dict(best_model_state)
-            torch.save(model.state_dict(), f"best_regressor_model.pth")
-            print(f"Best model saved with validation loss: {best_loss:.4f}")
+            datetime_str = time.strftime("%H-%M")
+            torch.save(model.state_dict(), f"ckpts/best_regressor_model_{datetime_str}.pth")
+            print(f"Best model saved with comparison loss: {best_comparison_loss:.4f} at time {datetime_str}")
 
-        return {"best_loss": best_loss}, model
+        return {"best_loss": best_loss, "comparison_loss": best_comparison_loss}, model
