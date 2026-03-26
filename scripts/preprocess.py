@@ -426,9 +426,52 @@ def add_computed_speed_columns(df):
 
     return df
 
+def death_crop(df, freq1=200, freq2=200, smoothing_window=15, threshold=250):
+
+    coords = df[['X', 'Y']].values
+    n = len(coords)
+    
+    # Pre-calculate start indices for the outer loop
+    i_indices = np.arange(0, n - freq1, freq1)
+    cumulative_distances = []
+    
+    for i in i_indices:
+        # Get reference points p0 (3 points for smoothing)
+        p0 = coords[[i, i + smoothing_window, i + 2*smoothing_window]]
+        
+        # Determine j indices for comparison points
+        j_indices = np.arange(i + freq2, n - 2*smoothing_window, freq2)
+        
+        if len(j_indices) == 0:
+            cumulative_distances.append(0)
+            continue
+            
+        # Slice all comparison points for the 3 smoothing tracks
+        pts1 = coords[j_indices]
+        pts2 = coords[j_indices + smoothing_window]
+        pts3 = coords[j_indices + 2*smoothing_window]
+        
+        # Vectorized Euclidean distance calculation and summation
+        sum_dist1 = np.linalg.norm(pts1 - p0[0], axis=1).sum()
+        sum_dist2 = np.linalg.norm(pts2 - p0[1], axis=1).sum()
+        sum_dist3 = np.linalg.norm(pts3 - p0[2], axis=1).sum()
+        
+        cumulative_distances.append((sum_dist1 + sum_dist2 + sum_dist3) / 3)
+
+    # Find the threshold crossing
+    first_below_threshold = next((idx for idx, d in enumerate(cumulative_distances) if d < threshold), None)
+    
+    if first_below_threshold is not None:
+        crop_idx = i_indices[first_below_threshold]
+        df_cropped = df.iloc[:crop_idx]
+        # print(f"Cropped {n - len(df_cropped)} rows at index {crop_idx}.\n")
+        return df_cropped
+    
+    return df
+
 
 def preprocess_file(
-    file, speed_cap=4, normalize_coords=False, distance_threshold=16
+    file, speed_cap=4, normalize_coords=False, distance_threshold=16, apply_death_crop=False
 ):
     """
     Preprocess a single CSV file by applying various cleaning steps.
@@ -438,8 +481,9 @@ def preprocess_file(
         speed_cap (float): Maximum speed value
         normalize_coords (bool): Whether to normalize coordinates
         distance_threshold (float): Distance threshold for coordinate reconstruction
+        apply_death_crop (bool): Whether to apply death cropping based on static end of life
     """
-    df = pd.read_csv(file)
+    df = pd.read_csv(file, low_memory=False)
     df = filter_and_reconstruct_coordinates_by_segment(
         df, distance_threshold=distance_threshold
     )
@@ -450,6 +494,9 @@ def preprocess_file(
         cleaned_segments.append(segment_df)
 
     cleaned_df = pd.concat(cleaned_segments).reset_index(drop=True)
+
+    if apply_death_crop:
+        cleaned_df = death_crop(cleaned_df)
 
     if normalize_coords:
         # cleaned_df = normalize_coordinates(cleaned_df)
@@ -466,6 +513,7 @@ def process_all_files(
     specific_file=None,
     distance_threshold=16,
     input_base_dir="data",
+    apply_death_crop=False,
 ):
     """
     Preprocess all CSV files in the specified treatment group.
@@ -478,6 +526,7 @@ def process_all_files(
         specific_file (str): Optional specific file to process (basename)
         distance_threshold (float): Distance threshold for coordinate reconstruction
         input_base_dir (str): Directory containing the data folders
+        apply_death_crop (bool): Whether to apply death cropping based on static end of life
     """
     destination_dir = os.path.join(output_dir, data)
     os.makedirs(destination_dir, exist_ok=True)
@@ -502,6 +551,7 @@ def process_all_files(
             speed_cap=speed_cap,
             normalize_coords=normalize_coords,
             distance_threshold=distance_threshold,
+            apply_death_crop=apply_death_crop,
         )
 
 
@@ -812,6 +862,8 @@ def parse_args():
     )
     parser.add_argument("--file", type=str, help="Specific file.")
 
+    parser.add_argument("--death-crop", action="store_true", help="Apply death cropping based on static end of life.")
+
     # Arguments for flow control
     parser.add_argument(
         "--generate-images",
@@ -851,7 +903,8 @@ if __name__ == "__main__":
             normalize_coords=args.normalize,
             specific_file=args.file,
             distance_threshold=args.distance_threshold,
-            input_base_dir=args.data_dir
+            input_base_dir=args.data_dir,
+            apply_death_crop=args.death_crop,
         )
 
         print(f"------ CSV Processing: Treated Group ({TREATED_DIR}) ------")
@@ -862,7 +915,8 @@ if __name__ == "__main__":
             normalize_coords=args.normalize,
             specific_file=args.file,
             distance_threshold=args.distance_threshold,
-            input_base_dir=args.data_dir
+            input_base_dir=args.data_dir,
+            apply_death_crop=args.death_crop,
         )
         
         # Calculate statistics after processing
