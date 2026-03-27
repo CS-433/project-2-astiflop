@@ -33,54 +33,37 @@ def save_results_to_json(results, filename="results.json"):
 
 
 def plot_results(avg_results):
-    metrics = ["acc", "f1"]
-    # Sort model names by F1 score in descending order
-    model_names = sorted(list(avg_results.keys()), key=lambda x: avg_results[x]["f1"], reverse=True)
+    # Sort model names by first metric in descending order
+    model_names = sorted(list(avg_results.keys()), key=lambda x: list(avg_results[x].values())[0], reverse=True)
 
-    x = np.arange(len(model_names))  # the label locations
-    width = 0.35  # the width of the bars
+    # Extract metrics (exclude *_std fields)
+    all_keys = list(avg_results[model_names[0]].keys())
+    metrics = [k for k in all_keys if not k.endswith('_std')]
+
+    x = np.arange(len(model_names))
+    width = 0.8 / len(metrics)
 
     fig, ax = plt.subplots(figsize=(14, 6))
 
-    def get_color(name):
-        if "logReg" in name:
-            return "tab:blue"
-        elif "rocket" in name:
-            return "tab:red"
-        elif "tail_mil" in name:
-            return "tab:green"
-        else:
-            return "tab:gray"
+    def get_color(metric_index):
+        colors = ["tab:blue", "tab:red", "tab:green", "tab:orange", "tab:purple", "tab:brown"]
+        return colors[metric_index % len(colors)]
 
-    bar_colors = [get_color(name) for name in model_names]
-
-    acc_means = [avg_results[model_name]["acc"] for model_name in model_names]
-    acc_stds = [avg_results[model_name]["acc_std"] for model_name in model_names]
-    f1_means = [avg_results[model_name]["f1"] for model_name in model_names]
-    f1_stds = [avg_results[model_name]["f1_std"] for model_name in model_names]
-
-    rects1 = ax.bar(x - width/2, acc_means, width, yerr=acc_stds, capsize=5, label='Accuracy', color=bar_colors)
-    rects2 = ax.bar(x + width/2, f1_means, width, yerr=f1_stds, capsize=5, label='F1 Score', color=bar_colors, alpha=0.5)
-
-    ax.bar_label(rects1, padding=3, fmt="%.2f")
-    ax.bar_label(rects2, padding=3, fmt="%.2f")
+    # Plot bars for each metric
+    for i, metric in enumerate(metrics):
+        means = [avg_results[model_name][metric] for model_name in model_names]
+        stds = [avg_results[model_name].get(f"{metric}_std", 0) for model_name in model_names]
+        offset = (i - len(metrics)/2 + 0.5) * width
+        rects = ax.bar(x + offset, means, width, yerr=stds, capsize=5, label=metric.capitalize(), color=get_color(i), alpha=0.8)
+        ax.bar_label(rects, padding=3, fmt="%.2f")
 
     ax.set_ylabel("Scores")
-    ax.set_title("Models average performances accross folds")
+    ax.set_title("Models average performances across folds")
     ax.set_xticks(x)
     ax.set_xticklabels(model_names, rotation=45, ha="right")
-
-    legend_elements = [
-        Patch(facecolor='tab:blue', label='logReg'),
-        Patch(facecolor='tab:red', label='rocket'),
-        Patch(facecolor='tab:green', label='tail_mil'),
-        Patch(facecolor='gray', label='Accuracy'),
-        Patch(facecolor='gray', alpha=0.5, label='F1 Score'),
-    ]
-    ax.legend(handles=legend_elements)
+    ax.legend()
 
     fig.tight_layout()
-    plt.show()
     plt.savefig("model_performance.png")
     print("Plot saved to model_performance.png")
     plt.close()
