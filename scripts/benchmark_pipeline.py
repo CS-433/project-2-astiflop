@@ -86,17 +86,17 @@ def benchmark_models(
         device=device
     )
 
-    test_loader = DataLoader(
-        dataset, 
-        batch_size=first_model_config["params"].get("batch_size", 8), 
-        shuffle=False
-    )
 
     for model_name, config in models_config.items():
-        print(f"\n=== Benchmarking {model_name} ===")
+        print(f"Benchmarking {model_name}...")
         model_cls = config["model_class"]
         params = config.get("params", {})
         ckpt_path = config.get("checkpoint_path")
+        test_loader = DataLoader(
+            dataset, 
+            batch_size=params.get("batch_size", 16),
+            shuffle=False
+        )
         
         if not ckpt_path or not os.path.exists(ckpt_path):
             print(f"Checkpoint not found for {model_name} at {ckpt_path}. Skipping.")
