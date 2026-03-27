@@ -191,4 +191,32 @@ if __name__ == "__main__":
 
     with open(args.output_json, "w") as f:
         json.dump(results, f, indent=4)
+        
     print(f"\nSaved benchmark results to {args.output_json}")
+    
+    # --- Pretty Print ---
+    print("\n" + "="*80)
+    print(f"{'BENCHMARK RESULTS':^80}")
+    print("="*80)
+    
+    # Get all metric names from the first model evaluated
+    if results:
+        first_model = list(results.keys())[0]
+        metric_names = list(results[first_model].keys())
+        
+        # Header
+        header = f"{'Model Name':<25} | " + " | ".join([f"{m[:10]:>10}" for m in metric_names])
+        print(header)
+        print("-" * len(header))
+        
+        # Rows
+        for model_name, metrics in results.items():
+            row = f"{model_name[:25]:<25} | "
+            for m in metric_names:
+                val = metrics.get(m, 0.0)
+                if isinstance(val, (int, float)):
+                    row += f"{val:10.4f} | "
+                else:
+                    row += f"{str(val)[:10]:>10} | "
+            print(row)
+    print("="*80 + "\n")
