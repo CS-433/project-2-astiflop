@@ -54,13 +54,13 @@ def compute_earlyness(preds, targets, epsilon_m=5.0, epsilon_v=25.0, window_size
 
 # List of metric functions to apply. Adding a new metric is as simple as adding its function here.
 METRICS_FUNCTIONS = {
-    "regr_mae_mean": compute_mae,
-    "regr_mae_tier1": lambda p, t: compute_tier_mae(p, t, tier=1),
-    "regr_mae_tier2": lambda p, t: compute_tier_mae(p, t, tier=2),
-    "regr_mae_tier3": lambda p, t: compute_tier_mae(p, t, tier=3),
-    "regr_stability_last20": compute_stability,
-    "regr_nasa": compute_nasa_loss,
-    "regr_earlyness_factor": compute_earlyness,
+    "mae_mean": compute_mae,
+    "mae_tier1": lambda p, t: compute_tier_mae(p, t, tier=1),
+    "mae_tier2": lambda p, t: compute_tier_mae(p, t, tier=2),
+    "mae_tier3": lambda p, t: compute_tier_mae(p, t, tier=3),
+    "stability_last20": compute_stability,
+    "nasa": compute_nasa_loss,
+    "earlyness_factor": compute_earlyness,
 }
 
 def benchmark_models(
@@ -132,7 +132,6 @@ def benchmark_models(
             measures["Interpretability"] = raw_results["interpretability_score"]
             
         models_results[model_name] = measures
-        print(f"Results for {model_name}: {measures}")
 
     return models_results
 
