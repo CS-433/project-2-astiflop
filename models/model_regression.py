@@ -4,7 +4,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from tqdm import tqdm
 
-from .base import BaseModel
+from .wrappers import TrainingWrapper, BenchmarkWrapper
 from .utils.cnn_features_extractor import CNNFeatureExtractor
 from .utils.gated_attention import GatedAttention
 
@@ -90,7 +90,52 @@ if __name__ == "__main__":
 
 
 
-class RegressorWrapper(BaseModel): 
+class RegressorBenchmarkWrapper(BenchmarkWrapper):
+    def load(self, path):
+        embed_dim = self.params.get("embed_dim", 64)
+        segment_len = self.params.get("segment_len", 900)
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        
+        self.model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim).to(device)
+        self.model.load_state_dict(torch.load(path, map_location=device))
+        self.model.eval()
+
+    def benchmark(self, test_loader):
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        loss_type = self.params.get("loss", "mse")
+        
+        if loss_type == "mse":
+            criterion = nn.MSELoss()
+        elif loss_type == "mae":
+            criterion = nn.L1Loss()
+        elif loss_type == "huber":
+            criterion = nn.SmoothL1Loss()
+        else:
+            criterion = nn.MSELoss()
+            
+        comparison_criterion = nn.MSELoss()
+        
+        test_loss = 0.0
+        comp_loss = 0.0
+        
+        max_segment_number = 150 # Set in the dataset
+        
+        # We need a dummy wrapper for forward_pass reuse since it expects 'this' to have _forward_pass
+        wrapper = RegressorTrainingWrapper(self.params)
+        
+        with torch.no_grad():
+            for X, _, total_segment_len in test_loader:
+                loss, comparison = wrapper._forward_pass(self.model, X, total_segment_len, criterion, comparison_criterion, device, max_segment_number=max_segment_number, is_training=False)
+                test_loss += loss.item()
+                comp_loss += comparison.item()
+                
+        test_loss /= len(test_loader)
+        comp_loss /= len(test_loader)
+        
+        return {"test_loss": test_loss, "comparison_loss": comp_loss}
+
+
+class RegressorTrainingWrapper(TrainingWrapper): 
     def _forward_pass(self, model, batch_data, total_lengths, criterion, comparison_criterion, device, max_segment_number, is_training=True):
         B, T_max, V, L = batch_data.shape
         batch_data = batch_data.cpu()

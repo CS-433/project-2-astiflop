@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-class BaseModel(ABC):
+class TrainingWrapper(ABC):
     def __init__(self, params=None):
         self.params = params or {}
 
@@ -15,6 +15,26 @@ class BaseModel(ABC):
         Returns:
             measures (dict): A dictionary containing measures of interest, like accuracy, precision, recall, and F1 score.
             trained_model (object): The trained model instance.
+        """
+        pass
+
+class BenchmarkWrapper(ABC):
+    def __init__(self, params=None):
+        self.params = params or {}
+        self.model = None
+
+    @abstractmethod
+    def load(self, path):
+        """
+        Load a trained model checkpoint from the given path.
+        """
+        pass
+
+    @abstractmethod
+    def benchmark(self, test_loader):
+        """
+        Evaluate the loaded model on the provided test data loader.
+        Returns measures of interest (e.g., accuracy, loss, etc.) in a dictionary.
         """
         pass
 
