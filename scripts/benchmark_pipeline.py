@@ -7,6 +7,61 @@ from utils.train_utils.dataset import LPBSDataset
 from torch.utils.data import DataLoader
 from models.model_regression import RegressorBenchmarkWrapper
 import json
+import numpy as np
+
+def compute_mae(preds, targets):
+    return np.mean(np.abs(preds - targets))
+
+def compute_tier_mae(preds, targets, tier=1):
+    T_actual = len(preds)
+    tier_size = T_actual // 3
+    if tier_size == 0:
+        return np.mean(np.abs(preds - targets)) # Fallback if sequence too short
+        
+    if tier == 1:
+        start_idx, end_idx = 0, tier_size
+    elif tier == 2:
+        start_idx, end_idx = tier_size, 2 * tier_size
+    else:  # tier == 3
+        start_idx, end_idx = 2 * tier_size, T_actual
+
+    return np.mean(np.abs(preds[start_idx:end_idx] - targets[start_idx:end_idx]))
+
+def compute_stability(preds, targets, last_k=20):
+    T_actual = len(preds)
+    k = min(last_k, T_actual)
+    if k > 1:
+        diffs = preds[-k:] - targets[-k:]
+        return np.var(diffs)
+    return 0.0
+
+def compute_nasa_loss(preds, targets):
+    d = preds - targets  # Now predictions and targets are in actual segments
+    return np.sum(np.where(d < 0, np.exp(-d/13.0) - 1, np.exp(d/10.0) - 1))
+
+def compute_earlyness(preds, targets, epsilon_m=5.0, epsilon_v=25.0, window_size=5):
+    T_actual = len(preds)
+    earlyness = 0
+    for t in range(1, T_actual):
+        current_mae = np.abs(preds[t-1] - targets[t-1])
+        window = min(window_size, t)
+        current_var = np.var(preds[max(0, t-window):t] - targets[max(0, t-window):t])
+        
+        if current_mae < epsilon_m and current_var < epsilon_v:
+            earlyness = T_actual - t
+            break
+    return earlyness
+
+# List of metric functions to apply. Adding a new metric is as simple as adding its function here.
+METRICS_FUNCTIONS = {
+    "regr_mae_mean": compute_mae,
+    "regr_mae_tier1": lambda p, t: compute_tier_mae(p, t, tier=1),
+    "regr_mae_tier2": lambda p, t: compute_tier_mae(p, t, tier=2),
+    "regr_mae_tier3": lambda p, t: compute_tier_mae(p, t, tier=3),
+    "regr_stability_last20": compute_stability,
+    "regr_nasa": compute_nasa_loss,
+    "regr_earlyness_factor": compute_earlyness,
+}
 
 def benchmark_models(
     models_config: dict,
@@ -49,8 +104,33 @@ def benchmark_models(
             
         model_wrapper = model_cls(params)
         model_wrapper.load(ckpt_path)
+        raw_results = model_wrapper.benchmark(test_loader)
         
-        measures = model_wrapper.benchmark(test_loader)
+        predictions_list = raw_results.get("predictions", [])
+        
+        # Build targets systematically in the pipeline to ensure identical evaluation for all models
+        targets_list = []
+        for preds in predictions_list:
+            T_actual = len(preds)
+            trajectory_targets = [T_actual - t for t in range(1, T_actual + 1)]
+            targets_list.append(np.array(trajectory_targets))
+        
+        # Compute metrics
+        measures = {name: 0.0 for name in METRICS_FUNCTIONS.keys()}
+        num_samples = len(predictions_list)
+        
+        if num_samples > 0:
+            for preds, targets in zip(predictions_list, targets_list):
+                for metric_name, metric_func in METRICS_FUNCTIONS.items():
+                    metric_val = metric_func(preds, targets)
+                    measures[metric_name] += metric_val
+                    
+            for metric_name in measures.keys():
+                measures[metric_name] /= num_samples
+
+        if "interpretability_score" in raw_results:
+            measures["Interpretability"] = raw_results["interpretability_score"]
+            
         models_results[model_name] = measures
         print(f"Results for {model_name}: {measures}")
 
