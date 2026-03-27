@@ -34,7 +34,7 @@ class BenchmarkWrapper(ABC):
     def benchmark(self, test_loader):
         """
         Evaluate the loaded model on the provided test data loader.
-        Returns measures of interest (e.g., accuracy, loss, etc.) in a dictionary.
+        Returns trajectories of each sample.
         """
         pass
 
