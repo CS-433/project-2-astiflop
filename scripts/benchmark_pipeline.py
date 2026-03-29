@@ -168,13 +168,101 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     models_config = {
-        "regr_64e_huber": {
+        "regr_16e_huber_5e4_bs8": {
             "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/best_regressor_model.pth", 
+            "checkpoint_path": "ckpts/regr_hyper_param/regr_16e_huber_5e4_bs8_no_crit.pth", 
+            "params": {
+                "batch_size": 8,
+                "loss": "huber",
+                "embed_dim": 16,
+                "device": "cuda:0",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_huber_1e3_bs8": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_huber_1e3_bs8_no_crit.pth", 
             "params": {
                 "batch_size": 8,
                 "loss": "huber",
                 "embed_dim": 64,
+                "device": "cuda:0",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_huber_5e4_bs4": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_huber_5e4_bs4_no_crit.pth", 
+            "params": {
+                "batch_size": 4,
+                "loss": "huber",
+                "embed_dim": 64,
+                "device": "cuda:0",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_huber_5e4_bs8": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_huber_5e4_bs8_no_crit.pth", 
+            "params": {
+                "batch_size": 8,
+                "loss": "huber",
+                "embed_dim": 64,
+                "device": "cuda:0",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_huber_5e4_bs16": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_huber_5e4_bs16_no_crit.pth", 
+            "params": {
+                "batch_size": 16,
+                "loss": "huber",
+                "embed_dim": 64,
+                "device": "cuda:0",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_mae_1e3_bs8": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_mae_1e3_bs8_no_crit.pth", 
+            "params": {
+                "batch_size": 8,
+                "loss": "mae",
+                "embed_dim": 64,
+                "device": "cuda:0",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_mae_5e4_bs8": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_mae_5e4_bs8_no_crit.pth", 
+            "params": {
+                "batch_size": 8,
+                "loss": "mae",
+                "embed_dim": 64,
+                "device": "cuda:0",
+                "segment_len": 900,
+            }
+        },
+        "regr_64e_mse_5e4_bs8": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_mse_5e4_bs8_no_crit.pth", 
+            "params": {
+                "batch_size": 8,
+                "loss": "mse",
+                "embed_dim": 64,
+                "device": "cuda:0",
+                "segment_len": 900,
+            }
+        },
+        "regr_128e_huber_5e4_bs8": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": "ckpts/regr_hyper_param/regr_128e_huber_5e4_bs8_no_crit.pth", 
+            "params": {
+                "batch_size": 8,
+                "loss": "huber",
+                "embed_dim": 128,
                 "device": "cuda:0",
                 "segment_len": 900,
             }
