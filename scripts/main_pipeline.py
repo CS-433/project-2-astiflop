@@ -29,6 +29,7 @@ def train_models(
     pytorch_dir="preprocessed_data/",
     augment_data=None,
     scaler="standard",
+    n_splits=5,
 ):
     # Create a results dictionary to store metrics for each model
     models_results = {}
@@ -50,7 +51,7 @@ def train_models(
     if augment_data:
         dataset.augment_data(n_augmentations_per_sample=augment_data)
 
-    gkf = GroupKFold(n_splits=5)
+    gkf = GroupKFold(n_splits=n_splits)
     for fold_idx, (worm_train_indices, worm_test_indices) in enumerate(gkf.split(dataset, groups=dataset.worm_ids)):
         print(f"\n=== Fold {fold_idx+1} ===")
         
@@ -320,7 +321,8 @@ if __name__ == "__main__":
         models_config,
         pytorch_dir=args.pytorch_dir,
         augment_data=args.augment_data,
-        scaler=args.scaler
+        scaler=args.scaler,
+        n_splits=2,
     )
 
     # Calculate average results
