@@ -16,7 +16,7 @@ path = args.path
 dump_dict = torch.load(path, weights_only=False)
 
 def to_np(v):
-    if hasattr(v, 'numpy'):
+    if hasattr(v, 'numpy'): # detect if it s a torch tensor
         return v.detach().cpu().numpy()
     return np.array(v)
 
