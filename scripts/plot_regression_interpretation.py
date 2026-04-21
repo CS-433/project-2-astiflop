@@ -3,9 +3,13 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
 from matplotlib.animation import FuncAnimation
 import numpy as np
+import argparse
 
-path = './notebook/inference_dump.pt'
+parser = argparse.ArgumentParser(description="Visualize interpretation of regression outputs.")
+parser.add_argument("path", type=str, help="Path to the inference dump (.pt) file")
+args = parser.parse_args()
 
+path = args.path
 dump_dict = torch.load(path, weights_only=False)
 T_actual =          int(dump_dict['T_actual'])
 true_objective =    np.array(dump_dict['true_objective'])
@@ -13,7 +17,7 @@ true_remaining =    np.array(dump_dict['true_remaining'])
 predictions =       np.array(dump_dict['predictions'])
 s_weights_cpu =     [np.array(x) for x in dump_dict['s_weights_cpu']]
 v_weights_cpu =     [np.array(x) for x in dump_dict['v_weights_cpu']]
-data_tensor =       np.array(dump_dict['data_tensor'], dtype=np.float32)
+data_tensor =       np.array(dump_dict['data_tensor'])
 
 # Global variables
 steps = np.arange(1, T_actual + 1)
