@@ -29,7 +29,9 @@ def check_first_rows(file_name, destination_dir):
                     
         if rows_to_drop:
             df = df.drop(index=rows_to_drop).reset_index(drop=True)
-        
+            # Adjust GlobalFrame to start from 0 after dropping rows, necessary for future segment alignment
+            df["GlobalFrame"] = df["GlobalFrame"] - df["GlobalFrame"].min() 
+
         file_output_path = os.path.join(destination_dir, os.path.basename(file_name))
         df.to_csv(file_output_path, index=False)
         return file_output_path
@@ -45,6 +47,16 @@ def add_segment_column(file, frames_per_segment=900):
     """
     df = pd.read_csv(file)
     df["Segment"] = df["GlobalFrame"] // frames_per_segment
+    df.to_csv(file, index=False)
+
+def add_lifetime_column(file):
+    """
+    Add a 'Lifetime' column to each CSV file, calculated as GlobalFrame + Segment * 9900, to create a real lifetime frame count, accounting for the 5h30 pause every 30 minutes of recording (at a 0.5 fps rate).
+    Args:
+        file (str): Filename to process
+    """
+    df = pd.read_csv(file)
+    df["Lifetime"] = df["GlobalFrame"] + df["Segment"] * 9900
     df.to_csv(file, index=False)
 
 
@@ -546,6 +558,7 @@ def process_all_files(
         pbar.set_description(f"Processing {os.path.basename(file)}")
         output_path = check_first_rows(file, destination_dir)
         add_segment_column(output_path)
+        add_lifetime_column(output_path)
         preprocess_file(
             output_path,
             speed_cap=speed_cap,
