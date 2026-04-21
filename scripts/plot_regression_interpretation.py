@@ -4,6 +4,9 @@ from matplotlib.widgets import Slider, Button
 from matplotlib.animation import FuncAnimation
 import numpy as np
 import argparse
+import os
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 parser = argparse.ArgumentParser(description="Visualize interpretation of regression outputs.")
 parser.add_argument("path", type=str, help="Path to the inference dump (.pt) file")
@@ -11,13 +14,19 @@ args = parser.parse_args()
 
 path = args.path
 dump_dict = torch.load(path, weights_only=False)
+
+def to_np(v):
+    if hasattr(v, 'numpy'):
+        return v.detach().cpu().numpy()
+    return np.array(v)
+
 T_actual =          int(dump_dict['T_actual'])
-true_objective =    np.array(dump_dict['true_objective'])
-true_remaining =    np.array(dump_dict['true_remaining'])
-predictions =       np.array(dump_dict['predictions'])
-s_weights_cpu =     [np.array(x) for x in dump_dict['s_weights_cpu']]
-v_weights_cpu =     [np.array(x) for x in dump_dict['v_weights_cpu']]
-data_tensor =       np.array(dump_dict['data_tensor'])
+true_objective =    to_np(dump_dict['true_objective'])
+true_remaining =    to_np(dump_dict['true_remaining'])
+predictions =       to_np(dump_dict['predictions'])
+s_weights_cpu =     [to_np(x) for x in dump_dict['s_weights_cpu']]
+v_weights_cpu =     [to_np(x) for x in dump_dict['v_weights_cpu']]
+data_tensor =       to_np(dump_dict['data_tensor'])
 
 # Global variables
 steps = np.arange(1, T_actual + 1)
@@ -73,7 +82,7 @@ traj_lines = []
 for i in range(T_actual):
     x_data = data_tensor[i, 0, :]
     y_data = data_tensor[i, 1, :]
-    valid_mask = ~((x_data == 0) & (y_data == 0) & (data_tensor[i, 2, :] == 0))
+    valid_mask = ~((x_data == 0) & (y_data == 0))
     if np.any(valid_mask):
         last_valid = np.max(np.nonzero(valid_mask)[0])
         x_filtered = x_data[:last_valid+1]
