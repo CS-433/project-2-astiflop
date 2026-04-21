@@ -11,8 +11,22 @@ from .utils.gated_attention import GatedAttention
 import random
 import time
 
+class RotaryTimeEmbedding(nn.Module):
+    def __init__(self, embed_dim, max_time=1000000.0):
+        super().__init__()
+        self.embed_dim = embed_dim
+        # Frequencies scaled to handle time up to max_time
+        inv_freq = 1.0 / (max_time ** (torch.arange(0, embed_dim, 2).float() / embed_dim))
+        self.register_buffer("inv_freq", inv_freq)
+
+    def forward(self, t):
+        # t: (B, T, 1)
+        sinusoid_inp = t * self.inv_freq # (B, T, embed_dim / 2)
+        emb = torch.cat([torch.sin(sinusoid_inp), torch.cos(sinusoid_inp)], dim=-1)
+        return emb
+
 class CNNBiLSTMMLPRegressor(nn.Module):
-    def __init__(self, segment_len, embed_dim=512, dropout=0.3, feature_extractor_layers=1, bilstm_layers=1):
+    def __init__(self, segment_len, embed_dim=512, dropout=0.3, feature_extractor_layers=1, bilstm_layers=1, use_time_encoding=True):
         super().__init__()
         self.embed_dim = embed_dim
         self.feature_extractor_layers = feature_extractor_layers
@@ -38,6 +52,12 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         ])
         
         self.lstm_aggregation = nn.Linear(embed_dim * bilstm_layers, embed_dim)
+        
+        # Time projection for Lifetime feature
+        self.use_time_encoding = use_time_encoding
+        if self.use_time_encoding:
+            self.time_projection = RotaryTimeEmbedding(embed_dim, max_time=1500000.0)
+            print(f"[WARNING] Model: Time encoding enabled. Ensure presence of Lifetime feature and that max_time is set appropriately for the scale of Lifetime values.")
         
         self.segment_attention = GatedAttention(dim=embed_dim, hidden_dim=embed_dim//4)
         
@@ -68,26 +88,42 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         return ortho_loss
 
     def forward(self, x, mask=None):
-        # x shape: (B, T, V, L)
+        # x shape: (B, T, V, L) where V includes Lifetime
         B, T, V, L = x.shape
+        
+        if self.use_time_encoding:
+            # Separation: X, Y, Speed are features; Lifetime is the last channel
+            x_features = x[:, :, :-1, :]  # (B, T, V-1, L)
+            x_lifetime = x[:, :, -1, :]  # (B, T, L)
+            V_feat = V - 1
+        else:
+            x_features = x
+            V_feat = V
 
         # == Feature Extraction ==
-        x_reshaped = x.view(B * T * V, 1, L)
+        x_reshaped = x_features.reshape(B * T * V_feat, 1, L)
         
         # Extract features from each branch and concatenate
         extracted_features = []
         for fe in self.feature_extractors:
-            extracted_features.append(fe(x_reshaped)) # (B*T*V, embed_dim)
+            extracted_features.append(fe(x_reshaped)) # (B*T*V_feat, embed_dim)
             
-        features_cat = torch.cat(extracted_features, dim=-1) # (B*T*V, embed_dim * feature_extractor_layers)
-        features_agg = self.cnn_aggregation(features_cat) # (B*T*V, embed_dim)
+        features_cat = torch.cat(extracted_features, dim=-1) # (B*T*V_feat, embed_dim * feature_extractor_layers)
+        features_agg = self.cnn_aggregation(features_cat) # (B*T*V_feat, embed_dim)
         
-        features = features_agg.view(B * T, V, self.embed_dim)   # (B*T, V, embed_dim)
+        features = features_agg.view(B * T, V_feat, self.embed_dim)   # (B*T, V_feat, embed_dim)
 
-        # == Variate Attention (Fusion X, Y, Speed) ==
-        v_weights = self.variate_attention(features, mask=None)  # (B*T, V, 1)
+        # == Variate Attention (Fusion X, Y, Speed, etc) ==
+        v_weights = self.variate_attention(features, mask=None)  # (B*T, V_feat, 1)
         seg_emb = torch.sum(features * v_weights, dim=1) # (B*T, embed_dim)
         seg_emb = seg_emb.view(B, T, self.embed_dim) # (B, T, embed_dim)
+        
+        if self.use_time_encoding:
+            # == Time Encoding (from Lifetime) ==
+            # Calculate a single scalar timestamp for each segment (average of Lifetime)
+            time_scalar = x_lifetime.mean(dim=-1).unsqueeze(-1)  # (B, T, 1)
+            time_emb = self.time_projection(time_scalar)  # (B, T, embed_dim)
+            seg_emb = seg_emb + time_emb  # Inject chronological awareness
         
         # == BiLSTM ==
         lstm_outputs = []
@@ -124,13 +160,13 @@ class CNNBiLSTMMLPRegressor(nn.Module):
 
 if __name__ == "__main__":
     # --- Dummy Data Example ---
-    B, T, V, L = 4, 10, 3, 900
+    B, T, V, L = 4, 10, 4, 900
     dummy_input = torch.randn(B, T, V, L)
     model = CNNBiLSTMMLPRegressor(segment_len=L, embed_dim=128, feature_extractor_layers=3, bilstm_layers=2)
     output, s_weights, v_weights, ortho_loss = model(dummy_input)
     print(f"Output shape: {output.shape} (expected: ({B},)) ")
     print(f"Segment Attention Weights shape: {s_weights.shape} (expected: ({B}, {T}, 1))")
-    print(f"Variate Attention Weights shape: {v_weights.shape} (expected: ({B*T}, {V}, 1))")
+    print(f"Variate Attention Weights shape: {v_weights.shape} (expected: ({B*T}, {V-1}, 1))")
     print(f"Ortho Loss shape: {ortho_loss.shape} - Value: {ortho_loss.item()}")
     print(f"Nan detected in the output: {torch.isnan(output).any()}")
     
@@ -143,9 +179,10 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
         segment_len = self.params.get("segment_len", 900)
         feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
         bilstm_layers = self.params.get("bilstm_layers", 1)
+        use_time_encoding = self.params.get("use_time_encoding", True)
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
         
-        self.model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers).to(device)
+        self.model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers, use_time_encoding=use_time_encoding).to(device)
         self.model.load_state_dict(torch.load(path, map_location=device))
         self.model.eval()
 
@@ -248,10 +285,11 @@ class RegressorTrainingWrapper(TrainingWrapper):
         loss = self.params.get("loss", "mse")
         feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
         bilstm_layers = self.params.get("bilstm_layers", 1)
+        use_time_encoding = self.params.get("use_time_encoding", True)
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
         max_segment_number = 150 # Set in the dataset
 
-        model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers).to(device) 
+        model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers, use_time_encoding=use_time_encoding).to(device) 
         
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         if loss == "mse":

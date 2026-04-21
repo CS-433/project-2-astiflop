@@ -18,12 +18,12 @@ load_dotenv()
 import ast
 
 # ---------------------------------------- Env loading ----------------------------------------
-FEATURES_PYTORCH = os.getenv("features_cols_pytorch", ["X", "Y", "Speed"])
+FEATURES_PYTORCH = os.getenv("features_cols_pytorch", ["X", "Y", "Speed", "Lifetime"])
 if isinstance(FEATURES_PYTORCH, str):
     FEATURES_PYTORCH = ast.literal_eval(FEATURES_PYTORCH)
 print(f"Using PyTorch features: {FEATURES_PYTORCH}")
 
-FEATURES_ROCKET = os.getenv("features_cols_rock", ["X", "Y", "Speed"])
+FEATURES_ROCKET = os.getenv("features_cols_rock", ["X", "Y", "Speed", "Lifetime"])
 if isinstance(FEATURES_ROCKET, str):
     FEATURES_ROCKET = ast.literal_eval(FEATURES_ROCKET)
 
