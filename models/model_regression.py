@@ -12,21 +12,32 @@ import random
 import time
 
 class CNNBiLSTMMLPRegressor(nn.Module):
-    def __init__(self, segment_len, embed_dim=512, dropout=0.3):
+    def __init__(self, segment_len, embed_dim=512, dropout=0.3, feature_extractor_layers=1, bilstm_layers=1):
         super().__init__()
         self.embed_dim = embed_dim
+        self.feature_extractor_layers = feature_extractor_layers
+        self.bilstm_layers = bilstm_layers
         
-        self.feature_extractor = CNNFeatureExtractor(input_len=segment_len, embedding_dim=embed_dim)
+        self.feature_extractors = nn.ModuleList([
+            CNNFeatureExtractor(input_len=segment_len, embedding_dim=embed_dim)
+            for _ in range(feature_extractor_layers)
+        ])
+        
+        self.cnn_aggregation = nn.Linear(embed_dim * feature_extractor_layers, embed_dim)
         
         self.variate_attention = GatedAttention(dim=embed_dim, hidden_dim=embed_dim//4)
         
-        self.bilstm = nn.LSTM(
-            input_size=embed_dim, 
-            hidden_size=embed_dim//2, 
-            num_layers=1, 
-            batch_first=True, 
-            bidirectional=True
-        )
+        self.bilstms = nn.ModuleList([
+            nn.LSTM(
+                input_size=embed_dim, 
+                hidden_size=embed_dim//2, 
+                num_layers=1, 
+                batch_first=True, 
+                bidirectional=True
+            ) for _ in range(bilstm_layers)
+        ])
+        
+        self.lstm_aggregation = nn.Linear(embed_dim * bilstm_layers, embed_dim)
         
         self.segment_attention = GatedAttention(dim=embed_dim, hidden_dim=embed_dim//4)
         
@@ -38,14 +49,40 @@ class CNNBiLSTMMLPRegressor(nn.Module):
             nn.Linear(embed_dim//2, 1)
         )
 
+    def compute_orthogonality_loss(self):
+        if self.bilstm_layers <= 1:
+            return torch.tensor(0.0, device=next(self.parameters()).device)
+        
+        weights = []
+        for lstm in self.bilstms:
+            w = torch.cat([p.flatten() for n, p in lstm.named_parameters() if 'weight' in n])
+            w_norm = w / (torch.norm(w) + 1e-8) 
+            weights.append(w_norm.unsqueeze(1))
+            
+        W = torch.cat(weights, dim=1) # (num_params, bilstm_layers)        
+        corr = torch.matmul(W.t(), W) 
+        
+        eye = torch.eye(self.bilstm_layers, device=W.device)
+        off_diag_corr = corr - eye
+        ortho_loss = torch.sum(off_diag_corr ** 2)        
+        return ortho_loss
+
     def forward(self, x, mask=None):
         # x shape: (B, T, V, L)
         B, T, V, L = x.shape
 
         # == Feature Extraction ==
         x_reshaped = x.view(B * T * V, 1, L)
-        features = self.feature_extractor(x_reshaped)  # (B*T*V, embed_dim)
-        features = features.view(B * T, V, self.embed_dim)   # (B*T, V, embed_dim)
+        
+        # Extract features from each branch and concatenate
+        extracted_features = []
+        for fe in self.feature_extractors:
+            extracted_features.append(fe(x_reshaped)) # (B*T*V, embed_dim)
+            
+        features_cat = torch.cat(extracted_features, dim=-1) # (B*T*V, embed_dim * feature_extractor_layers)
+        features_agg = self.cnn_aggregation(features_cat) # (B*T*V, embed_dim)
+        
+        features = features_agg.view(B * T, V, self.embed_dim)   # (B*T, V, embed_dim)
 
         # == Variate Attention (Fusion X, Y, Speed) ==
         v_weights = self.variate_attention(features, mask=None)  # (B*T, V, 1)
@@ -53,26 +90,35 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         seg_emb = seg_emb.view(B, T, self.embed_dim) # (B, T, embed_dim)
         
         # == BiLSTM ==
-        if mask is not None:
-            lengths = mask.sum(dim=1).cpu().to(torch.int64)
-            packed_emb = torch.nn.utils.rnn.pack_padded_sequence(
-                seg_emb, lengths, batch_first=True, enforce_sorted=False
-            )
-            lstm_out_packed, _ = self.bilstm(packed_emb)
-            lstm_out, _ = torch.nn.utils.rnn.pad_packed_sequence(
-                lstm_out_packed, batch_first=True, total_length=T
-            )
-        else:
-            lstm_out, _ = self.bilstm(seg_emb)  # (B, T, embed_dim)
+        lstm_outputs = []
+        for lstm in self.bilstms:
+            if mask is not None:
+                lengths = mask.sum(dim=1).cpu().to(torch.int64)
+                packed_emb = torch.nn.utils.rnn.pack_padded_sequence(
+                    seg_emb, lengths, batch_first=True, enforce_sorted=False
+                )
+                lstm_out_packed, _ = lstm(packed_emb)
+                lstm_out, _ = torch.nn.utils.rnn.pad_packed_sequence(
+                    lstm_out_packed, batch_first=True, total_length=T
+                )
+            else:
+                lstm_out, _ = lstm(seg_emb)  # (B, T, embed_dim)
+            lstm_outputs.append(lstm_out)
+            
+        lstm_cat = torch.cat(lstm_outputs, dim=-1) # (B, T, embed_dim * bilstm_layers)
+        lstm_agg = self.lstm_aggregation(lstm_cat) # (B, T, embed_dim)
         
         # == Segment Attention ==
-        s_weights = self.segment_attention(lstm_out, mask=mask)
-        context_vector = torch.sum(lstm_out * s_weights, dim=1) # (B, embed_dim)
+        s_weights = self.segment_attention(lstm_agg, mask=mask)
+        context_vector = torch.sum(lstm_agg * s_weights, dim=1) # (B, embed_dim)
           
         # == Final Regression ==
         output = self.regressor(context_vector).squeeze(-1) # (B,)
         
-        return output, s_weights, v_weights
+        # == Orthogonality Loss ==
+        ortho_loss = self.compute_orthogonality_loss()
+        
+        return output, s_weights, v_weights, ortho_loss
 
 
 
@@ -80,11 +126,12 @@ if __name__ == "__main__":
     # --- Dummy Data Example ---
     B, T, V, L = 4, 10, 3, 900
     dummy_input = torch.randn(B, T, V, L)
-    model = CNNBiLSTMMLPRegressor(segment_len=L, embed_dim=128)
-    output, s_weights, v_weights = model(dummy_input)
+    model = CNNBiLSTMMLPRegressor(segment_len=L, embed_dim=128, feature_extractor_layers=3, bilstm_layers=2)
+    output, s_weights, v_weights, ortho_loss = model(dummy_input)
     print(f"Output shape: {output.shape} (expected: ({B},)) ")
     print(f"Segment Attention Weights shape: {s_weights.shape} (expected: ({B}, {T}, 1))")
     print(f"Variate Attention Weights shape: {v_weights.shape} (expected: ({B*T}, {V}, 1))")
+    print(f"Ortho Loss shape: {ortho_loss.shape} - Value: {ortho_loss.item()}")
     print(f"Nan detected in the output: {torch.isnan(output).any()}")
     
 
@@ -94,9 +141,11 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
     def load(self, path):
         embed_dim = self.params.get("embed_dim", 64)
         segment_len = self.params.get("segment_len", 900)
+        feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
+        bilstm_layers = self.params.get("bilstm_layers", 1)
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
         
-        self.model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim).to(device)
+        self.model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers).to(device)
         self.model.load_state_dict(torch.load(path, map_location=device))
         self.model.eval()
 
@@ -127,7 +176,7 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
                     lengths_tensor = torch.tensor([len(x) for x in X_staircase], device=device).unsqueeze(1)
                     mask = (indices < lengths_tensor).float()
                     
-                    trajectory_preds, _, _ = self.model(X_padded, mask=mask)
+                    trajectory_preds, _, _, _ = self.model(X_padded, mask=mask)
                     trajectory_preds = trajectory_preds.cpu().numpy()
                     # Denormalize predictions to true RUL scale (number of segments)
                     trajectory_preds = trajectory_preds * (max_segment_number / 3.0)
@@ -143,6 +192,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
     def _forward_pass(self, model, batch_data, total_lengths, criterion, comparison_criterion, device, max_segment_number, is_training=True):
         B, T_max, V, L = batch_data.shape
         batch_data = batch_data.cpu()
+        ortho_beta = self.params.get("ortho_beta", 0.01)
 
         X_staircase = []
         Y_staircase = []
@@ -179,26 +229,29 @@ class RegressorTrainingWrapper(TrainingWrapper):
         mask = (indices < lengths_tensor).float()
 
         # Forward pass
-        preds, _, _ = model(X_padded, mask=mask)
-        loss = criterion(preds, targets)
+        preds, _, _, ortho_loss = model(X_padded, mask=mask)
+        loss = criterion(preds, targets) + ortho_beta * ortho_loss
+        
         if not is_training and comparison_criterion is not None:
             comparison_loss = comparison_criterion(preds, targets)
             return loss, comparison_loss
 
         return loss
 
-
     def train_on_fold(self, training_loader, validation_loader):
+        name = self.params.get("name", "regressor")
         lr = self.params.get("lr", 1e-4)
         embed_dim = self.params.get("embed_dim", 64)
         epochs = self.params.get("epochs", 100)
         patience = self.params.get("patience", 10)
         segment_len = self.params.get("segment_len", 900)
         loss = self.params.get("loss", "mse")
+        feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
+        bilstm_layers = self.params.get("bilstm_layers", 1)
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
         max_segment_number = 150 # Set in the dataset
 
-        model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim).to(device) 
+        model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers).to(device) 
         
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         if loss == "mse":
@@ -263,7 +316,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
         if best_model_state is not None:
             model.load_state_dict(best_model_state)
             datetime_str = time.strftime("%H-%M")
-            torch.save(model.state_dict(), f"ckpts/best_regressor_model_{datetime_str}.pth")
+            torch.save(model.state_dict(), f"ckpts/best_{name}_{datetime_str}.pth")
             print(f"Best model saved with comparison loss: {best_comparison_loss:.4f} at time {datetime_str}")
 
         return {"best_loss": best_loss, "comparison_loss": best_comparison_loss}, model

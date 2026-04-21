@@ -15,13 +15,13 @@ from utils.plot_utils.presents_results import (
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import GroupKFold
 
-from models.model_lr import LogisticRegWrapper
-from models.model_rocket import RocketWrapper
-from models.model_rf import RandomForestWrapper
-from models.model_xgboost import XGBoostWrapper
-from models.model_svm import SVMWrapper
-from models.model_tail_mil import TailMilClassificationWrapper
-from models.model_regression import RegressorWrapper
+# from models.model_lr import LogisticRegWrapper
+# from models.model_rocket import RocketWrapper
+# from models.model_rf import RandomForestWrapper
+# from models.model_xgboost import XGBoostWrapper
+# from models.model_svm import SVMWrapper
+# from models.model_tail_mil import TailMilClassificationWrapper
+from models.model_regression import RegressorTrainingWrapper
 
 
 def train_models(
@@ -29,6 +29,7 @@ def train_models(
     pytorch_dir="preprocessed_data/",
     augment_data=None,
     scaler="standard",
+    n_splits=5,
 ):
     # Create a results dictionary to store metrics for each model
     models_results = {}
@@ -50,7 +51,7 @@ def train_models(
     if augment_data:
         dataset.augment_data(n_augmentations_per_sample=augment_data)
 
-    gkf = GroupKFold(n_splits=5)
+    gkf = GroupKFold(n_splits=n_splits)
     for fold_idx, (worm_train_indices, worm_test_indices) in enumerate(gkf.split(dataset, groups=dataset.worm_ids)):
         print(f"\n=== Fold {fold_idx+1} ===")
         
@@ -127,173 +128,17 @@ if __name__ == "__main__":
 
     # Example usage
     models_config = {
-        # "tail_mil_32b_64e_1e3": {
-        #     "model_class": TailMilClassificationWrapper,
-        #     "params": {
-        #         "batch_size": 32,
-        #         "embed_dim": 64,
-        #         "lr": 1e-3,
-        #         "patience": 75,
-        #         "epochs": 200,
-        #         "device": "cuda",
-        #     }
-        # },
-        # "tail_mil_32b_32e_1e3": {
-        #     "model_class": TailMilClassificationWrapper,
-        #     "params": {
-        #         "batch_size": 32,
-        #         "embed_dim": 32,
-        #         "lr": 1e-3,
-        #         "patience": 75,
-        #         "epochs": 200,
-        #         "device": "cuda",
-        #     }
-        # },
-        # "tail_mil_32b_16e_1e3": {
-        #     "model_class": TailMilClassificationWrapper,
-        #     "params": {
-        #         "batch_size": 32,
-        #         "embed_dim": 16,
-        #         "lr": 1e-3,
-        #         "patience": 75,
-        #         "epochs": 200,
-        #         "device": "cuda",
-        #     }
-        # },
-        # "tail_mil_8b_32e_1e4": {
-        #     "model_class": TailMilClassificationWrapper,
-        #     "params": {
-        #         "batch_size": 8,
-        #         "embed_dim": 32,
-        #         "lr": 1e-4,
-        #         "patience": 75,
-        #         "epochs": 200,
-        #         "device": "cuda",
-        #     }
-        # },
-        # "Regressor": {
-        #     "model_class": RegressorWrapper,
-        #     "params": {
-        #         "batch_size": 2,
-        #         "loss": "huber",
-        #         "embed_dim": 64,
-        #         "lr": 1e-4,
-        #         "patience": 10,
-        #         "epochs": 100,
-        #         "device": "cuda",
-        #         "segment_len": 900,
-        #     }
-        # },
-        "regr_64e_huber_5e4_bs8": {
-            "model_class": RegressorWrapper,
+        "regr_64e_1_1_5e4": {
+            "model_class": RegressorTrainingWrapper,
             "params": {
-                "batch_size": 8,
-                "loss": "huber",
+                "name": "regr_64e_bs16_1_1",
+                
                 "embed_dim": 64,
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "regr_128e_huber_5e4_bs8": {
-            "model_class": RegressorWrapper,
-            "params": {
-                "batch_size": 8,
-                "loss": "huber",
-                "embed_dim": 128,
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "regr_16e_huber_5e4_bs8": {
-            "model_class": RegressorWrapper,
-            "params": {
-                "batch_size": 8,
-                "loss": "huber",
-                "embed_dim": 16,
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_mse_5e4_bs8": {
-            "model_class": RegressorWrapper,
-            "params": {
-                "batch_size": 8,
-                "loss": "mse",
-                "embed_dim": 64,
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_mae_5e4_bs8": {
-            "model_class": RegressorWrapper,
-            "params": {
-                "batch_size": 8,
-                "loss": "mae",
-                "embed_dim": 64,
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_mae_1e3_bs8": {
-            "model_class": RegressorWrapper,
-            "params": {
-                "batch_size": 8,
-                "loss": "mae",
-                "embed_dim": 64,
-                "lr": 1e-3,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_huber_1e3_bs8": {
-            "model_class": RegressorWrapper,
-            "params": {
-                "batch_size": 8,
-                "loss": "huber",
-                "embed_dim": 64,
-                "lr": 1e-3,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_huber_5e4_bs4": {
-            "model_class": RegressorWrapper,
-            "params": {
-                "batch_size": 4,
-                "loss": "huber",
-                "embed_dim": 64,
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_huber_5e4_bs16": {
-            "model_class": RegressorWrapper,
-            "params": {
+                "feature_extractor_layers": 1,
+                "bilstm_layers": 1,
+
                 "batch_size": 16,
-                "loss": "huber",
-                "embed_dim": 64,
+                "loss": "huber",                
                 "lr": 5e-4,
                 "patience": 25,
                 "epochs": 500,
@@ -301,26 +146,109 @@ if __name__ == "__main__":
                 "segment_len": 900,
             }
         },
-        # "regr_64e_mse": {
-        #     "model_class": RegressorWrapper,
-        #     "params": {
-        #         "batch_size": 8,
-        #         "loss": "mse",
-        #         "embed_dim": 64,
-        #         "lr": 1e-4,
-        #         "patience": 25,
-        #         "epochs": 500,
-        #         "device": "cuda:1",
-        #         "segment_len": 900,
-        #     }
-        # },
+
+        "regr_64e_3_1_5e4": {
+            "model_class": RegressorTrainingWrapper,
+            "params": {
+                "name": "regr_64e_bs16_3_1",
+                
+                "embed_dim": 64,
+                "feature_extractor_layers": 3,
+                "bilstm_layers": 1,
+
+                "batch_size": 16,
+                "loss": "huber",                
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+
+        "regr_64e_1_3_5e4": {
+            "model_class": RegressorTrainingWrapper,
+            "params": {
+                "name": "regr_64e_bs16_1_3",
+                
+                "embed_dim": 64,
+                "feature_extractor_layers": 1,
+                "bilstm_layers": 3,
+
+                "batch_size": 16,
+                "loss": "huber",                
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+
+        "regr_64e_3_3_5e4": {
+            "model_class": RegressorTrainingWrapper,
+            "params": {
+                "name": "regr_64e_bs16_3_3",
+                
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "bilstm_layers": 3,
+
+                "loss": "huber",                
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+
+        "regr_128e_3_3_5e4": {
+            "model_class": RegressorTrainingWrapper,
+            "params": {
+                "name": "regr_128e_bs16_3_3",
+                
+                "embed_dim": 128,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "bilstm_layers": 3,
+
+                "loss": "huber",                
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
+
+        "regr_128e_3_3_1e3": {
+            "model_class": RegressorTrainingWrapper,
+            "params": {
+                "name": "regr_128e_bs16_3_3_1e3",
+                
+                "embed_dim": 128,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "bilstm_layers": 3,
+
+                "loss": "huber",                
+                "lr": 1e-3,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda:1",
+                "segment_len": 900,
+            }
+        },
     }
     
     results = train_models(
         models_config,
         pytorch_dir=args.pytorch_dir,
         augment_data=args.augment_data,
-        scaler=args.scaler
+        scaler=args.scaler,
+        n_splits=2,
     )
 
     # Calculate average results

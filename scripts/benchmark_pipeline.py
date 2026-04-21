@@ -5,7 +5,10 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.train_utils.dataset import LPBSDataset
 from torch.utils.data import DataLoader
+
 from models.model_regression import RegressorBenchmarkWrapper
+from models.model_dummies import DummyBenchmarkWrapper
+
 import json
 import numpy as np
 
@@ -97,10 +100,6 @@ def benchmark_models(
             batch_size=params.get("batch_size", 16),
             shuffle=False
         )
-        
-        if not ckpt_path or not os.path.exists(ckpt_path):
-            print(f"Checkpoint not found for {model_name} at {ckpt_path}. Skipping.")
-            continue
             
         model_wrapper = model_cls(params)
         model_wrapper.load(ckpt_path)
@@ -168,103 +167,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     models_config = {
-        "regr_16e_huber_5e4_bs8": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/regr_hyper_param/regr_16e_huber_5e4_bs8_no_crit.pth", 
+        "dummy_random": {
+            "model_class": DummyBenchmarkWrapper,
+            "checkpoint_path": None,
             "params": {
-                "batch_size": 8,
-                "loss": "huber",
-                "embed_dim": 16,
-                "device": "cuda:0",
-                "segment_len": 900,
+                "model_type": "random",
+                "device": "cuda:1"
             }
         },
-        "regr_64e_huber_1e3_bs8": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_huber_1e3_bs8_no_crit.pth", 
+        "dummy_segment": {
+            "model_class": DummyBenchmarkWrapper,
+            "checkpoint_path": None,
             "params": {
-                "batch_size": 8,
-                "loss": "huber",
-                "embed_dim": 64,
-                "device": "cuda:0",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_huber_5e4_bs4": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_huber_5e4_bs4_no_crit.pth", 
-            "params": {
-                "batch_size": 4,
-                "loss": "huber",
-                "embed_dim": 64,
-                "device": "cuda:0",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_huber_5e4_bs8": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_huber_5e4_bs8_no_crit.pth", 
-            "params": {
-                "batch_size": 8,
-                "loss": "huber",
-                "embed_dim": 64,
-                "device": "cuda:0",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_huber_5e4_bs16": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_huber_5e4_bs16_no_crit.pth", 
-            "params": {
-                "batch_size": 16,
-                "loss": "huber",
-                "embed_dim": 64,
-                "device": "cuda:0",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_mae_1e3_bs8": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_mae_1e3_bs8_no_crit.pth", 
-            "params": {
-                "batch_size": 8,
-                "loss": "mae",
-                "embed_dim": 64,
-                "device": "cuda:0",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_mae_5e4_bs8": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_mae_5e4_bs8_no_crit.pth", 
-            "params": {
-                "batch_size": 8,
-                "loss": "mae",
-                "embed_dim": 64,
-                "device": "cuda:0",
-                "segment_len": 900,
-            }
-        },
-        "regr_64e_mse_5e4_bs8": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/regr_hyper_param/regr_64e_mse_5e4_bs8_no_crit.pth", 
-            "params": {
-                "batch_size": 8,
-                "loss": "mse",
-                "embed_dim": 64,
-                "device": "cuda:0",
-                "segment_len": 900,
-            }
-        },
-        "regr_128e_huber_5e4_bs8": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/regr_hyper_param/regr_128e_huber_5e4_bs8_no_crit.pth", 
-            "params": {
-                "batch_size": 8,
-                "loss": "huber",
-                "embed_dim": 128,
-                "device": "cuda:0",
-                "segment_len": 900,
+                "model_type": "segment",
+                "device": "cuda:1"
             }
         },
     }
