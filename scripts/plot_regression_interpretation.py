@@ -83,7 +83,7 @@ cmap = plt.cm.plasma
 sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=1))
 sm.set_array([])
 cbar = fig.colorbar(sm, ax=ax2, fraction=0.03, shrink=0.5, pad=0.04)
-cbar.set_ticks([0, 0.85])
+cbar.set_ticks([0, 1])
 cbar.set_ticklabels(['t=0', f't={T_actual}'])
 
 traj_lines = []
