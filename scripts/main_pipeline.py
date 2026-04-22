@@ -128,25 +128,6 @@ if __name__ == "__main__":
 
     # Example usage
     models_config = {
-        "regr_64e_1_1_5e4": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "regr_64e_bs16_1_1",
-                
-                "embed_dim": 64,
-                "feature_extractor_layers": 1,
-                "bilstm_layers": 1,
-
-                "batch_size": 16,
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-
         "regr_64e_3_1_5e4": {
             "model_class": RegressorTrainingWrapper,
             "params": {
@@ -161,83 +142,7 @@ if __name__ == "__main__":
                 "lr": 5e-4,
                 "patience": 25,
                 "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-
-        "regr_64e_1_3_5e4": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "regr_64e_bs16_1_3",
-                
-                "embed_dim": 64,
-                "feature_extractor_layers": 1,
-                "bilstm_layers": 3,
-
-                "batch_size": 16,
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-
-        "regr_64e_3_3_5e4": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "regr_64e_bs16_3_3",
-                
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "bilstm_layers": 3,
-
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-
-        "regr_128e_3_3_5e4": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "regr_128e_bs16_3_3",
-                
-                "embed_dim": 128,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "bilstm_layers": 3,
-
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-
-        "regr_128e_3_3_1e3": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "regr_128e_bs16_3_3_1e3",
-                
-                "embed_dim": 128,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "bilstm_layers": 3,
-
-                "loss": "huber",                
-                "lr": 1e-3,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda:1",
+                "device": "cuda",
                 "segment_len": 900,
             }
         },
