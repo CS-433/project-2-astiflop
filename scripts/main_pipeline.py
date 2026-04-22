@@ -22,7 +22,7 @@ from sklearn.model_selection import GroupKFold
 # from models.model_svm import SVMWrapper
 # from models.model_tail_mil import TailMilClassificationWrapper
 from models.model_regression import RegressorTrainingWrapper
-
+from models.model_hmm import HMMTrainingWrapper
 
 def train_models(
     models_config: dict,
@@ -128,22 +128,15 @@ if __name__ == "__main__":
 
     # Example usage
     models_config = {
-        "regr_64e_3_1_5e4": {
-            "model_class": RegressorTrainingWrapper,
+        "HMM_Model": {
+            "model_class": HMMTrainingWrapper,
             "params": {
-                "name": "regr_64e_bs16_3_1",
-                
-                "embed_dim": 64,
-                "feature_extractor_layers": 3,
-                "bilstm_layers": 1,
-
+                "name": "hmm_model",
                 "batch_size": 16,
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda",
-                "segment_len": 900,
+                "n_components": 4,
+                "epochs": 10,
+                "threshold": 0.5,
+                "device": "cpu"
             }
         },
     }
