@@ -24,6 +24,7 @@ T_actual =          int(dump_dict['T_actual'])
 true_objective =    to_np(dump_dict['true_objective'])
 true_remaining =    to_np(dump_dict['true_remaining'])
 predictions =       to_np(dump_dict['predictions'])
+variances =         to_np(dump_dict['variances'])
 s_weights_cpu =     [to_np(x) for x in dump_dict['s_weights_cpu']]
 v_weights_cpu =     [to_np(x) for x in dump_dict['v_weights_cpu']]
 data_tensor =       to_np(dump_dict['data_tensor'])
@@ -43,10 +44,14 @@ ax3, ax4 = axs[1]
 # PLOT 1 (Timeline)
 # ---------------------------------------------------------
 plot1_xlim = max(1.5 * T_actual, max_predicted_total, max_true_total)
-y_max_val = max(np.max(true_remaining), np.max(predictions)) * 1.1
+y_max_val = max(np.max(true_remaining), np.max(predictions + 1.96 * np.sqrt(variances))) * 1.1
 
 line_true, = ax1.plot([], [], label="True Remaining", linestyle="--", marker="o", markersize=4, color="blue", alpha=0.7)
 line_pred, = ax1.plot([], [], label="Predicted Remaining", color='red', marker="x", markersize=4)
+fill_ci_dummy = ax1.fill_between([], [], [], color='red', alpha=0.2, label='95% CI')
+fill_ci = None
+fill_ci_vspan = None
+
 vline_pred = ax1.axvline(x=-1, color='red', linestyle='-', alpha=0.6, label='Current Pred Total')
 vline_true = ax1.axvline(x=-1, color='blue', linestyle='-', alpha=0.6, label='Current True Total')
 
@@ -118,8 +123,10 @@ true_lifespan = max_true_total
 colors = ["#ff9999", "#66b3ff", "#99ff99"]
 variates = ["X", "Y", "Speed"]
 
+num_vars = len(v_weights_cpu[0]) if len(np.shape(v_weights_cpu[0])) == 1 else np.shape(v_weights_cpu[0])[1]
+
 bar_containers = []
-for i in range(3):
+for i in range(num_vars):
     # Initialize with zeros for heights. 
     # We will update these heights directly on update() using `.patches`
     bc = ax3.bar(np.arange(1, T_actual + 1), np.zeros(T_actual), color=colors[i], label=variates[i], edgecolor='black', linewidth=0.5, alpha=0.8)
@@ -194,6 +201,7 @@ def toggle_anim(event):
 btn_play.on_clicked(toggle_anim)
 
 def update(val):
+    global fill_ci, fill_ci_vspan
     t = int(slider.val)
     current_idx = t - 1
     
@@ -218,10 +226,20 @@ def update(val):
     line_true.set_data(steps[:t], true_remaining[:t])
     line_pred.set_data(steps[:t], predictions[:t])
     
+    if fill_ci is not None:
+        fill_ci.remove()
+    std_dev = np.sqrt(variances[:t])
+    fill_ci = ax1.fill_between(steps[:t], predictions[:t] - 1.96 * std_dev, predictions[:t] + 1.96 * std_dev, color='red', alpha=0.2)
+    
     current_pred_total = t + predictions[current_idx]
     current_true_total = t + true_remaining[current_idx]
     vline_pred.set_xdata([current_pred_total, current_pred_total])
     vline_true.set_xdata([current_true_total, current_true_total])
+    
+    if fill_ci_vspan is not None:
+        fill_ci_vspan.remove()
+    std_dev_current = np.sqrt(variances[current_idx])
+    fill_ci_vspan = ax1.axvspan(current_pred_total - 1.96 * std_dev_current, current_pred_total + 1.96 * std_dev_current, color='red', alpha=0.1)
     
     # Update Plot 2
     for i in range(T_actual):
