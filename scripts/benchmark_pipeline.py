@@ -11,11 +11,12 @@ from models.model_dummies import DummyBenchmarkWrapper
 
 import json
 import numpy as np
+from scipy.stats import norm
 
-def compute_mae(preds, targets):
+def compute_mae(preds, targets, vars):
     return np.mean(np.abs(preds - targets))
 
-def compute_tier_mae(preds, targets, tier=1):
+def compute_tier_mae(preds, targets, vars, tier=1):
     T_actual = len(preds)
     tier_size = T_actual // 3
     if tier_size == 0:
@@ -30,7 +31,7 @@ def compute_tier_mae(preds, targets, tier=1):
 
     return np.mean(np.abs(preds[start_idx:end_idx] - targets[start_idx:end_idx]))
 
-def compute_stability(preds, targets, last_k=20):
+def compute_stability(preds, targets, vars, last_k=20):
     T_actual = len(preds)
     k = min(last_k, T_actual)
     if k > 1:
@@ -38,11 +39,11 @@ def compute_stability(preds, targets, last_k=20):
         return np.var(diffs)
     return 0.0
 
-def compute_nasa_loss(preds, targets):
+def compute_nasa_loss(preds, targets, vars):
     d = preds - targets  # Now predictions and targets are in actual segments
     return np.sum(np.where(d < 0, np.exp(-d/13.0) - 1, np.exp(d/10.0) - 1))
 
-def compute_earlyness(preds, targets, epsilon_m=5.0, epsilon_v=25.0, window_size=5):
+def compute_earlyness(preds, targets, vars, epsilon_m=5.0, epsilon_v=25.0, window_size=5):
     T_actual = len(preds)
     earlyness = 0
     for t in range(1, T_actual):
@@ -55,15 +56,49 @@ def compute_earlyness(preds, targets, epsilon_m=5.0, epsilon_v=25.0, window_size
             break
     return earlyness
 
+
+def compute_nll(preds, targets, variances):
+    if variances is None or np.all(variances == 0): return np.nan
+    # NLL for Gaussian: 0.5*log(2*pi*var) + (target-pred)^2 / (2*var)
+    eps = 1e-6
+    nll = 0.5 * np.log(2 * np.pi * (variances + eps)) + ((targets - preds)**2) / (2 * (variances + eps))
+    return np.mean(nll)
+
+def compute_crps(preds, targets, variances):
+    if variances is None or np.all(variances == 0): return np.mean(np.abs(preds - targets))
+    # CRPS for Normal Distribution
+    sig = np.sqrt(variances + 1e-6)
+    loc = (targets - preds) / sig
+    crps = sig * (loc * (2 * norm.cdf(loc) - 1) + 2 * norm.pdf(loc) - 1/np.sqrt(np.pi))
+    return np.mean(crps)
+
+def compute_coverage(preds, targets, variances, confidence=0.95):
+    if variances is None: return np.nan
+    # PICP: Prediction Interval Coverage Probability
+    z = norm.ppf(1 - (1 - confidence) / 2)
+    upper = preds + z * np.sqrt(variances)
+    lower = preds - z * np.sqrt(variances)
+    covered = (targets >= lower) & (targets <= upper)
+    return np.mean(covered)
+
+def compute_sharpness(preds, targets, variances):
+    if variances is None: return np.nan
+    # MPIW: Mean Prediction Interval Width
+    return np.mean(2 * 1.96 * np.sqrt(variances))
+
 # List of metric functions to apply. Adding a new metric is as simple as adding its function here.
 METRICS_FUNCTIONS = {
     "mae_mean": compute_mae,
-    "mae_tier1": lambda p, t: compute_tier_mae(p, t, tier=1),
-    "mae_tier2": lambda p, t: compute_tier_mae(p, t, tier=2),
-    "mae_tier3": lambda p, t: compute_tier_mae(p, t, tier=3),
+    "mae_tier1": lambda p, t, v: compute_tier_mae(p, t, v, tier=1),
+    "mae_tier2": lambda p, t, v: compute_tier_mae(p, t, v, tier=2),
+    "mae_tier3": lambda p, t, v: compute_tier_mae(p, t, v, tier=3),
     "stability_last20": compute_stability,
     "nasa": compute_nasa_loss,
     "earlyness_factor": compute_earlyness,
+    "nll": compute_nll,
+    "crps": compute_crps,
+    "coverage_95": compute_coverage,
+    "sharpness": compute_sharpness
 }
 
 def benchmark_models(
@@ -104,25 +139,19 @@ def benchmark_models(
         model_wrapper = model_cls(params)
         model_wrapper.load(ckpt_path)
         raw_results = model_wrapper.benchmark(test_loader)
+        predictions_list = raw_results.get("predictions")
+        variances_list = raw_results.get("variances") # Handle models without variance
+
+        # Build targets
+        targets_list = [np.array([len(p) - t for t in range(1, len(p) + 1)]) for p in predictions_list]
         
-        predictions_list = raw_results.get("predictions", [])
-        
-        # Build targets systematically in the pipeline to ensure identical evaluation for all models
-        targets_list = []
-        for preds in predictions_list:
-            T_actual = len(preds)
-            trajectory_targets = [T_actual - t for t in range(1, T_actual + 1)]
-            targets_list.append(np.array(trajectory_targets))
-        
-        # Compute metrics
         measures = {name: 0.0 for name in METRICS_FUNCTIONS.keys()}
         num_samples = len(predictions_list)
         
         if num_samples > 0:
-            for preds, targets in zip(predictions_list, targets_list):
+            for preds, targets, vars in zip(predictions_list, targets_list, variances_list):
                 for metric_name, metric_func in METRICS_FUNCTIONS.items():
-                    metric_val = metric_func(preds, targets)
-                    measures[metric_name] += metric_val
+                    measures[metric_name] += metric_func(preds, targets, vars)
                     
             for metric_name in measures.keys():
                 measures[metric_name] /= num_samples
