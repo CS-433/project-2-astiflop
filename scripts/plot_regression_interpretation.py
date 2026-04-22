@@ -78,6 +78,14 @@ else:
 
 # Define the lines and their colors
 cmap = plt.cm.plasma
+
+# Add a colorbar for Plot 2 to indicate time flow
+sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=1))
+sm.set_array([])
+cbar = fig.colorbar(sm, ax=ax2, fraction=0.03, shrink=0.5, pad=0.04)
+cbar.set_ticks([0, 0.85])
+cbar.set_ticklabels(['t=0', f't={T_actual}'])
+
 traj_lines = []
 for i in range(T_actual):
     x_data = data_tensor[i, 0, :]
@@ -134,7 +142,19 @@ ax4.axis('off')
 
 # Slider and Play Button
 ax_slider = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor='lightgoldenrodyellow')
-slider = Slider(ax_slider, 'Segment (t)', 1, T_actual, valinit=T_actual, valstep=1, valfmt='%0.0f')
+slider = Slider(ax_slider, 'Segment (t)', 1, T_actual, valinit=T_actual, valstep=1)
+
+# Add vertical traits for each segment
+for i in np.arange(1, T_actual + 1):
+    ax_slider.axvline(i, color='black', linewidth=0.8, alpha=0.4, zorder=1)
+
+ax_slider.set_xticks([]) # Ensure default x-ticks are hidden
+
+# Add labels for lifetime info below the slider
+ax_lifetime = plt.axes([0.15, 0.015, 0.65, 0.03])
+ax_lifetime.axis('off')
+txt_elapsed = ax_lifetime.text(0.0, 0.5, '', transform=ax_lifetime.transAxes, ha='left', va='center', fontsize=10)
+txt_remaining = ax_lifetime.text(1.0, 0.5, '', transform=ax_lifetime.transAxes, ha='right', va='center', fontsize=10)
 
 ax_play = plt.axes([0.85, 0.05, 0.08, 0.03])
 btn_play = Button(ax_play, 'Play')
@@ -177,6 +197,23 @@ def update(val):
     t = int(slider.val)
     current_idx = t - 1
     
+    # Update Lifetime sub-labels
+    elapsed_hours = t * 6
+    e_days = elapsed_hours // 24
+    e_hours = elapsed_hours % 24
+    
+    # Using true value for remaining time
+    rem_hours = float(true_remaining[current_idx]) * 6
+    r_days = int(rem_hours // 24)
+    r_hours = int(rem_hours % 24)
+    
+    slider.valtext.set_text(f"{t}")
+    txt_elapsed.set_text(f"Elapsed adult lifetime: {e_days}d {e_hours}h")
+    txt_remaining.set_text(f"Remaining lifetime: {r_days}d {r_hours}h")
+    
+    # Update Colorbar label
+    cbar.set_ticklabels(['t=0', f't={t}'])
+
     # Update Plot 1
     line_true.set_data(steps[:t], true_remaining[:t])
     line_pred.set_data(steps[:t], predictions[:t])
@@ -192,9 +229,10 @@ def update(val):
             traj_lines[i].set_visible(True)
             if i == t - 1:
                 # Highlight the current segment
-                traj_lines[i].set_color('red')
-                traj_lines[i].set_linewidth(2.5)
+                traj_lines[i].set_color(cmap(1.0))
+                traj_lines[i].set_linewidth(3.5)
                 traj_lines[i].set_alpha(1.0)
+                traj_lines[i].set_zorder(10) # Bring to absolute front
 
             else:
                 # Draw past segments fainter
@@ -202,6 +240,7 @@ def update(val):
                 traj_lines[i].set_color(cmap(color_val))
                 traj_lines[i].set_linewidth(1.5)
                 traj_lines[i].set_alpha(0.5)
+                traj_lines[i].set_zorder(2) # Send to back
         else:
             traj_lines[i].set_visible(False)
             
