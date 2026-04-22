@@ -191,8 +191,7 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
         max_segment_number = 150 # Set in the dataset
         
         all_trajectory_preds = []
-        all_trajectory_targets = []
-        import numpy as np
+        all_trajectory_vars = []
         
         with torch.no_grad():
             for X, _, total_segment_len in test_loader:
@@ -215,12 +214,21 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
                     
                     trajectory_preds, _, _, _ = self.model(X_padded, mask=mask)
                     trajectory_preds = trajectory_preds.cpu().numpy()
+
                     # Denormalize predictions to true RUL scale (number of segments)
                     trajectory_preds = trajectory_preds * (max_segment_number / 3.0)
                     
+                    # Variance estimation with heuristic
+                    # during the estimated healthy phase (predicted RUL > 45), we can assume high uncertainty. 
+                    # during the critical phase (predicted RUL <= 45), we can assume lower uncertainty. 
+                    trajectory_vars = [10.0 if pred > 45 else 2.0 for pred in trajectory_preds]
+
                     all_trajectory_preds.append(trajectory_preds)
+                    all_trajectory_vars.append(trajectory_vars)
+                    
         return {
             "predictions": all_trajectory_preds,
+            "variances": all_trajectory_vars,
             "interpretability_score": 7.5
         }
 
