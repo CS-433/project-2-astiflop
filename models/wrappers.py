@@ -35,6 +35,12 @@ class BenchmarkWrapper(ABC):
         """
         Evaluate the loaded model on the provided test data loader.
         Returns trajectories of each sample.
+
+        Returns:
+            dict:
+                predictions (list): List of predicted probabilities for each sample.
+                variances (list): List of variances associated with each prediction.
+                interpretability_score: A measure of how interpretable the model's predictions are.
         """
         pass
 
