@@ -27,6 +27,10 @@ class RotaryTimeEmbedding(nn.Module):
 
 class CNNBiLSTMMLPRegressor(nn.Module):
     def __init__(self, segment_len, embed_dim=512, dropout=0.3, feature_extractor_layers=1, bilstm_layers=1, use_time_encoding=True):
+        """
+        Specification: when use_time_encoding=True, the model will use the Lifetime feature to create a time embedding that is added to the segment embeddings. 
+        When set to False, the model will simply ignore the Lifetime feature.
+        """
         super().__init__()
         self.embed_dim = embed_dim
         self.feature_extractor_layers = feature_extractor_layers
@@ -58,7 +62,9 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         if self.use_time_encoding:
             self.time_projection = RotaryTimeEmbedding(embed_dim, max_time=1500000.0)
             print(f"[WARNING] Model: Time encoding enabled. Ensure presence of Lifetime feature and that max_time is set appropriately for the scale of Lifetime values.")
-        
+        else: 
+            print(f"[INFO] Model: Time encoding disabled. Lifetime feature will not be used for temporal awareness.")
+
         self.segment_attention = GatedAttention(dim=embed_dim, hidden_dim=embed_dim//4)
         
         self.regressor = nn.Sequential(
@@ -90,15 +96,12 @@ class CNNBiLSTMMLPRegressor(nn.Module):
     def forward(self, x, mask=None):
         # x shape: (B, T, V, L) where V includes Lifetime
         B, T, V, L = x.shape
+        assert V == 4, f"Expected V=4 (X, Y, Speed, Lifetime), got {V}. Adjust model or input accordingly."
         
-        if self.use_time_encoding:
-            # Separation: X, Y, Speed are features; Lifetime is the last channel
-            x_features = x[:, :, :-1, :]  # (B, T, V-1, L)
-            x_lifetime = x[:, :, -1, :]  # (B, T, L)
-            V_feat = V - 1
-        else:
-            x_features = x
-            V_feat = V
+        x_features = x[:, :, :-1, :]  # (B, T, V-1, L)
+        x_lifetime = x[:, :, -1, :]  # (B, T, L)
+        V_feat = V - 1
+
 
         # == Feature Extraction ==
         x_reshaped = x_features.reshape(B * T * V_feat, 1, L)
