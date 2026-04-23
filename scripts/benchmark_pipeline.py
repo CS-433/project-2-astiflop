@@ -212,6 +212,22 @@ if __name__ == "__main__":
                 "device": "cuda"
             }
         },
+
+        # "hmm_regr_64e": {
+        #     "model_class": RegressorBenchmarkWrapper,
+        #     "checkpoint_path": "ckpts/best_hmm_regr_64e_bs16_3_16_[REPLACE_WITH_TIME].pth", # <-- Update this!
+        #     "params": {
+        #         "name": "hmm_regr_64e_bs16_3_16",
+        #         "model_type": "hmm",              
+        #         "embed_dim": 64,
+        #         "feature_extractor_layers": 3,
+        #         "num_states": 16,                 
+        #         "batch_size": 16,
+        #         "device": "cuda",
+        #         "segment_len": 900,
+        #     }
+        # },
+
         "regr_64e_1_1_5e4": {
             "model_class": RegressorBenchmarkWrapper,
             "checkpoint_path": "ckpts/layers/best_regr_64e_bs16_1_1_13-42.pth",

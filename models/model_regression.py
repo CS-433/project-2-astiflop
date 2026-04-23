@@ -7,9 +7,6 @@ import random
 import time
 import os
 
-# PyTorch-Struct for the HMM implementation
-import torch_struct
-
 from .wrappers import TrainingWrapper, BenchmarkWrapper
 from .utils.cnn_features_extractor import CNNFeatureExtractor
 from .utils.gated_attention import GatedAttention
@@ -241,14 +238,27 @@ class CNNHMMMLPRegressor(nn.Module):
         # Determine sequence lengths for torch_struct
         lengths = mask.sum(dim=1).long() if mask is not None else torch.full((B,), T, device=x.device, dtype=torch.long)
         
-        # Instantiate the exact HMM distribution object
-        dist = torch_struct.HMM(transition=trans_log_probs, emission=emission_logits, init=init_log_probs, lengths=lengths)
+        # Initialize alpha values (log probabilities)
+        alpha = torch.zeros(B, T, self.num_states, device=x.device)
+        alpha[:, 0, :] = init_log_probs.unsqueeze(0) + emission_logits[:, 0, :]
         
-        # dist.marginals gives the probability of being in state S at time T: (B, T, num_states)
-        marginals = dist.marginals
+        # Differentiable Forward Pass
+        for t in range(1, T):
+            prev_alpha = alpha[:, t-1, :].unsqueeze(2)  # (B, num_states, 1)
+            trans = trans_log_probs.unsqueeze(0)        # (1, num_states, num_states)
+            
+            # logsumexp computes log( sum( exp(prev_alpha + trans) ) ) safely
+            log_prob_prior = torch.logsumexp(prev_alpha + trans, dim=1) 
+            alpha[:, t, :] = log_prob_prior + emission_logits[:, t, :]
+            
+        # 1. Negative Log-Likelihood (NLL) Loss for training
+        batch_indices = torch.arange(B, device=x.device)
+        seq_log_likelihood = torch.logsumexp(alpha[batch_indices, lengths - 1, :], dim=-1)
+        nll_loss = -seq_log_likelihood.mean()
         
-        # The negative log-partition function acts as our NLL loss to train the HMM transitions!
-        nll_loss = -dist.partition.mean()
+        # 2. State Marginals P(z_t | x_{1:t})
+        # Softmax over alpha gives exact causal filtering probabilities for attention
+        marginals = torch.softmax(alpha, dim=-1)
         
         # --- Final Regression using HMM States ---
         # Instead of LSTM hidden states, we apply attention over the HMM state probabilities
@@ -257,7 +267,6 @@ class CNNHMMMLPRegressor(nn.Module):
           
         output = self.regressor(context_vector).squeeze(-1) 
         
-        # We return nll_loss in place of ortho_loss. The wrapper will use it identically.
         return output, s_weights, v_weights, nll_loss
 
 

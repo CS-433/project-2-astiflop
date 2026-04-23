@@ -161,6 +161,7 @@ if __name__ == "__main__":
                 "lr": 5e-4,
                 "patience": 25,
                 "epochs": 500,
+                # "device": "cpu",
                 "device": "cuda",
                 "segment_len": 900,
             }
