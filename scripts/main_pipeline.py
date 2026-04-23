@@ -133,8 +133,8 @@ if __name__ == "__main__":
             "params": {
                 "name": "hmm_model",
                 "batch_size": 16,
-                "n_components": 4,
-                "epochs": 10,
+                "n_components": 9,
+                "epochs": 30,
                 "threshold": 0.5,
                 "device": "cpu"
             }
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         pytorch_dir=args.pytorch_dir,
         augment_data=args.augment_data,
         scaler=args.scaler,
-        n_splits=2,
+        n_splits=5,
     )
 
     # Calculate average results

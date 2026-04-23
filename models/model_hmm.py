@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.mixture import GaussianMixture
+from hmmlearn import hmm
 from .wrappers import TrainingWrapper, worm_level_aggregation, compute_metrics
 
 class HMMTrainingWrapper(TrainingWrapper):
@@ -7,32 +7,37 @@ class HMMTrainingWrapper(TrainingWrapper):
         super().__init__(params)
 
     def train_on_fold(self, training_loader, validation_loader):
-        # We simulate a simplified HMM (independent sequence logic) using GMM for the emissions
-        # to bypass the lack of hmmlearn pure python wheels on Python 3.14.
-        # This allows the pipeline to run while maintaining similar feature characteristics.
+        # Prepare training data sequence by sequence
         X_train_list = []
-        y_train_list = []
+        lengths_train = []
         
         for batch in training_loader:
-            x, y, _, _ = batch
+            x, y, w_id = batch
             x_np = x.cpu().numpy()
             y_np = y.cpu().numpy()
             for i in range(x_np.shape[0]):
-                valid_len = np.sum(~np.isnan(x_np[i, :, 0]))
+                # x_np is (batch_size, num_segments, channels, segment_length)
+                # valid_len is the number of valid sequences. Check the first channel, first point of each segment
+                valid_len = np.sum(~np.isnan(x_np[i, :, 0, 0]))
                 if valid_len == 0:
                     valid_len = x_np.shape[1]
-                x_seq = np.nan_to_num(x_np[i, :valid_len, :])
-                # We aggregate each sequence into its mean feature for a simple GMM approach
-                X_train_list.append(np.mean(x_seq, axis=0))
-                y_train_list.append(y_np[i])
+                
+                # Reshape to (num_segments, channels * segment_length)
+                x_seq = x_np[i, :valid_len, :, :]
+                x_seq_flat = x_seq.reshape(valid_len, -1)
+                x_seq_flat = np.nan_to_num(x_seq_flat)
+                
+                X_train_list.append(x_seq_flat)
+                lengths_train.append(valid_len)
 
-        X_train = np.stack(X_train_list, axis=0) if X_train_list else np.empty((0, 1))
+        X_train = np.concatenate(X_train_list, axis=0) if X_train_list else np.empty((0, 1))
+        # print("Final X_train shape:", X_train.shape)
         
         n_components = self.params.get("n_components", 4)
-        model = GaussianMixture(n_components=n_components, covariance_type="diag", random_state=42)
+        model = hmm.GaussianHMM(n_components=n_components, covariance_type="diag", n_iter=self.params.get("epochs", 10), random_state=42)
         
         if X_train.shape[0] > 0 and X_train.shape[1] > 0:
-            model.fit(X_train)
+            model.fit(X_train, lengths_train)
 
         # Evaluation on validation set
         y_true = []
@@ -40,21 +45,24 @@ class HMMTrainingWrapper(TrainingWrapper):
         worm_ids = []
 
         for batch in validation_loader:
-            x, y, w_id, _ = batch
+            x, y, w_id = batch
             x_np = x.cpu().numpy()
             y_np = y.cpu().numpy()
             w_id_np = w_id.cpu().numpy()
 
             for i in range(x_np.shape[0]):
-                valid_len = np.sum(~np.isnan(x_np[i, :, 0]))
+                valid_len = np.sum(~np.isnan(x_np[i, :, 0, 0]))
                 if valid_len == 0:
                     valid_len = x_np.shape[1]
-                x_seq = np.nan_to_num(x_np[i, :valid_len, :])
+                
+                x_seq = x_np[i, :valid_len, :, :]
+                x_seq_flat = x_seq.reshape(valid_len, -1)
+                x_seq_flat = np.nan_to_num(x_seq_flat)
                 
                 try:
-                    # GMM score
-                    score = model.score(np.mean(x_seq, axis=0).reshape(1, -1))
-                except:
+                    score = model.score(x_seq_flat)
+                except Exception as e:
+                    print("Score error:", e)
                     score = 0.0
 
                 y_scores.append(score)
