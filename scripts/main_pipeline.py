@@ -22,7 +22,7 @@ from sklearn.model_selection import GroupKFold
 # from models.model_svm import SVMWrapper
 # from models.model_tail_mil import TailMilClassificationWrapper
 from models.model_regression import RegressorTrainingWrapper
-from models.model_hmm import HMMRegressionWrapper
+
 
 def train_models(
     models_config: dict,
@@ -128,23 +128,32 @@ if __name__ == "__main__":
 
     # Example usage
     models_config = {
-        "HMM_Regressor": {
-            "model_class": HMMRegressionWrapper,
+        "regr_64e_3_1_5e4": {
+            "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "hmm_regressor",
+                "name": "regr_64e_bs16_3_1",
+                
+                "embed_dim": 64,
+                "feature_extractor_layers": 3,
+                "bilstm_layers": 1,
+
                 "batch_size": 16,
-                "n_components": 3,
-                "epochs": 30,
-                "device": "cpu"
+                "loss": "huber",                
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": "cuda",
+                "segment_len": 900,
             }
-        },    }
+        },
+    }
     
     results = train_models(
         models_config,
         pytorch_dir=args.pytorch_dir,
         augment_data=args.augment_data,
         scaler=args.scaler,
-        n_splits=5,
+        n_splits=2,
     )
 
     # Calculate average results
