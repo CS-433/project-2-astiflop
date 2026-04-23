@@ -127,16 +127,35 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Example usage
+
+    # models_config = {
+    #     "regr_64e_3_1_5e4": {
+    #         "model_class": RegressorTrainingWrapper,
+    #         "params": {
+    #             "name": "regr_64e_bs16_3_1",
+    #             "embed_dim": 64,
+    #             "feature_extractor_layers": 3,
+    #             "bilstm_layers": 1,
+    #             "batch_size": 16,
+    #             "loss": "huber",                
+    #             "lr": 5e-4,
+    #             "patience": 25,
+    #             "epochs": 500,
+    #             "device": "cuda",
+    #             "segment_len": 900,
+    #         }
+    #     },
+    # }
+
     models_config = {
-        "regr_64e_3_1_5e4": {
+        "hmm_regr_64e": {
             "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "regr_64e_bs16_3_1",
-                
+                "name": "hmm_regr_64e_bs16_3_16", 
+                "model_type": "hmm",              
                 "embed_dim": 64,
                 "feature_extractor_layers": 3,
-                "bilstm_layers": 1,
-
+                "num_states": 16,                 
                 "batch_size": 16,
                 "loss": "huber",                
                 "lr": 5e-4,
