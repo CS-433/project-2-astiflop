@@ -72,7 +72,8 @@ class CNNBiLSTMMLPRegressor(nn.Module):
             nn.Linear(embed_dim, embed_dim//2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(embed_dim//2, 1)
+            # nn.Linear(embed_dim//2, 1)
+            nn.Linear(embed_dim//2, 2) # Outputting both alpha and beta for Weibull distribution
         )
 
     def compute_orthogonality_loss(self):
@@ -156,8 +157,20 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         
         # == Orthogonality Loss ==
         ortho_loss = self.compute_orthogonality_loss()
+
+        raw_output = self.regressor(context_vector)
+        # Use Softplus to ensure alpha and beta are strictly positive
+        weibull_params = torch.nn.functional.softplus(raw_output) 
+
+        alpha = weibull_params[:, 0] # Alpha: Estimated RUL (time when 63.2% expected to die)
+        beta = weibull_params[:, 1] # Beta: Model Confidence / Hazard Rate (>3 is high confidence, <2 is wide variance)
+
+        ##### For standard regression, uncomment:
+        # return output, s_weights, v_weights, ortho_loss
         
-        return output, s_weights, v_weights, ortho_loss
+        ##### For Weibull, uncomment:
+        return (alpha, beta), s_weights, v_weights, ortho_loss
+        #####
 
 
 
@@ -276,15 +289,52 @@ class RegressorTrainingWrapper(TrainingWrapper):
         lengths_tensor = torch.tensor([len(x) for x in X_staircase], device=device).unsqueeze(1)
         mask = (indices < lengths_tensor).float()
 
-        # Forward pass
+        # Forward pass    
         preds, _, _, ortho_loss = model(X_padded, mask=mask)
+        
         loss = criterion(preds, targets) + ortho_beta * ortho_loss
         
         if not is_training and comparison_criterion is not None:
-            comparison_loss = comparison_criterion(preds, targets)
+            # If preds is a Weibull tuple, use alpha as the point prediction for MSE comparison
+            if isinstance(preds, tuple):
+                point_preds = preds[0] 
+            else:
+                point_preds = preds
+                
+            comparison_loss = comparison_criterion(point_preds, targets)
             return loss, comparison_loss
 
         return loss
+
+    def weibull_nll_loss(self, preds, y_true): 
+            '''
+            WEIBULL DISTRIBUTION OUTPUTS (DEEP SURVIVAL ANALYSIS)
+            
+            Alpha (Scale Parameter / Characteristic Life):
+            - Math: The exact time by which 63.2% of the population is expected to die.
+            - Biology: The baseline Estimated Remaining Useful Life (RUL).
+            
+            Beta (Shape Parameter / Hazard Rate):
+            - Math: The aging rate and variance of the probability distribution.
+            - Biology: The model's CONFIDENCE in its prediction:
+                * Beta > 3     : High confidence (narrow curve, death is imminent near Alpha).
+                * 1 < Beta < 2 : Low confidence (wide curve, ambiguous movement/aging).
+                * Beta <= 1    : Constant/decreasing mortality risk (rare for normal aging).
+            '''
+            # Unpack the tuple here instead of in the function signature
+            alpha, beta = preds 
+            eps = 1e-7
+            
+            alpha = torch.clamp(alpha, min=eps, max=1e5)
+            beta = torch.clamp(beta, min=eps, max=1e5)
+            y_true = torch.clamp(y_true, min=eps)
+            
+            log_likelihood = (
+                torch.log(beta) - torch.log(alpha) + 
+                (beta - 1.0) * (torch.log(y_true) - torch.log(alpha)) - 
+                torch.pow(y_true / alpha, beta)
+            )
+            return -log_likelihood.mean()
 
     def train_on_fold(self, training_loader, validation_loader):
         name = self.params.get("name", "regressor")
@@ -307,6 +357,8 @@ class RegressorTrainingWrapper(TrainingWrapper):
             criterion = nn.MSELoss()
         elif loss == "mae":
             criterion = nn.L1Loss()
+        elif loss == "weibull":
+            criterion = self.weibull_nll_loss
         elif loss == "huber":
             criterion = nn.SmoothL1Loss()
 

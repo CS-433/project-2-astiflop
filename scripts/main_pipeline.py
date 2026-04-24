@@ -138,7 +138,7 @@ if __name__ == "__main__":
                 "bilstm_layers": 1,
 
                 "batch_size": 16,
-                "loss": "huber",                
+                "loss": "weibull",                
                 "lr": 5e-4,
                 "patience": 25,
                 "epochs": 500,
