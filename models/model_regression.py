@@ -189,7 +189,7 @@ class Chomp1d(nn.Module):
         return x.contiguous()
 
 class TemporalBlock(nn.Module):
-    def __init__(self, n_inputs, n_outputs, kernel_size, stride, dilation, padding, dropout=0.3):
+    def __init__(self, n_inputs, n_outputs, kernel_size, stride, dilation, padding, dropout=0.3, dropout_1d=False):
         super(TemporalBlock, self).__init__()
         
         # Causal Conv 1
@@ -197,14 +197,20 @@ class TemporalBlock(nn.Module):
                                            stride=stride, padding=padding, dilation=dilation))
         self.chomp1 = Chomp1d(padding)
         self.relu1 = nn.ReLU()
-        self.dropout1 = nn.Dropout(dropout)
+        if dropout_1d:
+            self.dropout1 = nn.Dropout1d(dropout)
+        else:
+            self.dropout1 = nn.Dropout(dropout)
 
         # Causal Conv 2
         self.conv2 = weight_norm(nn.Conv1d(n_outputs, n_outputs, kernel_size,
                                            stride=stride, padding=padding, dilation=dilation))
         self.chomp2 = Chomp1d(padding)
         self.relu2 = nn.ReLU()
-        self.dropout2 = nn.Dropout(dropout)
+        if dropout_1d:
+            self.dropout2 = nn.Dropout1d(dropout)
+        else:
+            self.dropout2 = nn.Dropout(dropout)
 
         self.net = nn.Sequential(self.conv1, self.chomp1, self.relu1, self.dropout1,
                                  self.conv2, self.chomp2, self.relu2, self.dropout2)
@@ -227,10 +233,11 @@ class TemporalBlock(nn.Module):
 
 
 class CNNTCNMLPRegressor(nn.Module):
-    def __init__(self, segment_len, embed_dim=64, dropout=0.4, feature_extractor_layers=1, kernel_size=3, use_time_encoding=True):
+    def __init__(self, segment_len, embed_dim=64, dropout=0.4, feature_extractor_layers=1, kernel_size=3, use_time_encoding=True, dropout_1d=False):
         super().__init__()
         self.embed_dim = embed_dim
         self.feature_extractor_layers = feature_extractor_layers
+        self.dropout_1d = dropout_1d
         
         # 1. Feature Extraction (Identical to BiLSTM to keep spatial interpretation)
         self.feature_extractors = nn.ModuleList([
@@ -246,7 +253,7 @@ class CNNTCNMLPRegressor(nn.Module):
             self.time_projection = RotaryTimeEmbedding(embed_dim, max_time=1500000.0)
             
         # 2. TCN Sequence Modeling
-        num_channels = [embed_dim, embed_dim, embed_dim, embed_dim, embed_dim]
+        num_channels = [embed_dim, embed_dim, embed_dim, embed_dim, embed_dim, embed_dim]  # 6 layers with constant channels for covering 150 segments T_max
         layers = []
         num_levels = len(num_channels)
         for i in range(num_levels):
@@ -256,7 +263,7 @@ class CNNTCNMLPRegressor(nn.Module):
             # Padding formula ensures strict causality
             padding = (kernel_size - 1) * dilation_size 
             layers.append(TemporalBlock(in_channels, out_channels, kernel_size, stride=1, 
-                                        dilation=dilation_size, padding=padding, dropout=dropout))
+                                        dilation=dilation_size, padding=padding, dropout=dropout, dropout_1d=dropout_1d))
         
         self.tcn = nn.Sequential(*layers)
         

@@ -160,7 +160,8 @@ if __name__ == "__main__":
                 
                 "model_type": "tcn",         
                 "kernel_size": 3,            
-                "dropout": 0.4,              
+                "dropout": 0.4,   
+                "dropout_1d": True, # try both with and without 1D dropout in TCN layers          
                 
                 "embed_dim": 64,
                 "feature_extractor_layers": 3,
