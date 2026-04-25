@@ -44,6 +44,34 @@ class BenchmarkWrapper(ABC):
         """
         pass
 
+class VisualizationWrapper(ABC):
+    def __init__(self, params=None):
+        self.params = params or {}
+        self.model = None
+
+    @abstractmethod
+    def load(self, path):
+        """
+        Load a trained model checkpoint from the given path.
+        """
+        pass
+
+    @abstractmethod
+    def get_trajectory_predictions(self, data_tensor, total_segments):
+        """
+        Run inference on a single trajectory step-by-step.
+        
+        Args:
+            data_tensor: Tensor of shape (T, ...), representing the full sample
+            total_segments: The number of valid segments (T_actual).
+            
+        Returns:
+            predictions (list or array): List of predicted remaining lifetime for each step t=1..T_actual.
+            variances (list or array): List of variances for each prediction.
+            custom_data (dict): A dictionary with model-specific data (e.g. 's_weights', 'v_weights' for attention).
+        """
+        pass
+
 def worm_level_aggregation(worm_ids, probs, true_labels, threshold=0.5):
     results_df = pd.DataFrame(
         {"Worm_ID": worm_ids, "Prob_Segment": probs, "True_Label": true_labels}

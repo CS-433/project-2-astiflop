@@ -7,7 +7,7 @@ import random
 import time
 import os
 
-from .wrappers import TrainingWrapper, BenchmarkWrapper
+from .wrappers import TrainingWrapper, BenchmarkWrapper, VisualizationWrapper
 from .utils.cnn_features_extractor import CNNFeatureExtractor
 from .utils.gated_attention import GatedAttention
 
@@ -486,13 +486,13 @@ class RegressorTrainingWrapper(TrainingWrapper):
 
             if val_loss < best_loss:
                 best_loss = val_loss
+
+            if comparison_loss < best_comparison_loss:
+                best_comparison_loss = comparison_loss
                 epochs_no_improve = 0
                 best_model_state = model.state_dict()
             else:
                 epochs_no_improve += 1
-
-            if comparison_loss < best_comparison_loss:
-                best_comparison_loss = comparison_loss
             
             # Summary of epoch:
             if epoch % 10 == 0:  # Print every 10 epochs
@@ -510,3 +510,63 @@ class RegressorTrainingWrapper(TrainingWrapper):
             print(f"Best model saved with comparison loss: {best_comparison_loss:.4f} at time {datetime_str}")
 
         return {"best_loss": best_loss, "comparison_loss": best_comparison_loss}, model
+
+class RegressorVisualizationWrapper(VisualizationWrapper):
+    def load(self, path):
+        model_type = self.params.get("model_type", "bilstm")
+        embed_dim = self.params.get("embed_dim", 64)
+        segment_len = self.params.get("segment_len", 900)
+        feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
+        use_time_encoding = self.params.get("use_time_encoding", True)
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        
+        if model_type == "hmm":
+            num_states = self.params.get("num_states", 16)
+            self.model = CNNHMMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, num_states=num_states, use_time_encoding=use_time_encoding).to(device)
+        else:
+            bilstm_layers = self.params.get("bilstm_layers", 1)
+            self.model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers, use_time_encoding=use_time_encoding).to(device)
+            
+        if path and os.path.exists(path):
+            self.model.load_state_dict(torch.load(path, map_location=device))
+        self.model.eval()
+
+    def get_trajectory_predictions(self, data_tensor, total_segments):
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        max_segment_number = 150
+        T_actual = int(total_segments)
+        
+        predictions = []
+        variances = []
+        s_weights_all = []
+        v_weights_all = []
+        
+        with torch.no_grad():
+            for t in range(1, T_actual + 1):
+                x_t = data_tensor[:t].unsqueeze(0).to(device)
+                mask = torch.ones(1, t).to(device)
+                
+                out = self.model(x_t, mask=mask)
+                if isinstance(out, tuple):
+                    output = out[0]
+                    s_weights = out[1] if len(out) > 1 and out[1] is not None else torch.zeros(1, t)
+                    v_weights = out[2] if len(out) > 2 and out[2] is not None else torch.zeros(1, t, 3)
+                else:
+                    output = out
+                    s_weights = torch.zeros(1, t)
+                    v_weights = torch.zeros(1, t, 3)
+                
+                # Denormalize
+                pred_val = output.item() * (max_segment_number / 3.0)
+                predictions.append(pred_val)
+                # Heuristic variance as seen in benchmark
+                variances.append(10.0 if pred_val > 45 else 2.0)
+                
+                s_weights_all.append(s_weights.squeeze().cpu().numpy())
+                v_weights_all.append(v_weights.squeeze().cpu().numpy())
+
+        custom_data = {
+            "s_weights": s_weights_all,
+            "v_weights": v_weights_all
+        }
+        return predictions, variances, custom_data
