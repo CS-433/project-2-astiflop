@@ -127,15 +127,43 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Example usage
+    # BiLSTM
+    # 
+    # models_config = {
+    #     "regr_64e_3_1_5e4": {
+    #         "model_class": RegressorTrainingWrapper,
+    #         "params": {
+    #             "name": "regr_64e_bs16_3_1",
+                
+    #             "embed_dim": 64,
+    #             "feature_extractor_layers": 3,
+    #             "bilstm_layers": 1,
+
+    #             "batch_size": 16,
+    #             "loss": "weibull",                
+    #             "lr": 5e-4,
+    #             "patience": 25,
+    #             "epochs": 500,
+    #             "device": "cuda",
+    #             "segment_len": 900,
+    #         }
+    #     },
+    # }
+
+    # TCN
+    # 
     models_config = {
-        "regr_64e_3_1_5e4": {
+        "tcn_regr_64e_3_k3": {
             "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "regr_64e_bs16_3_1",
+                "name": "tcn_regr_64e_bs16_3_k3",
+                
+                "model_type": "tcn",         
+                "kernel_size": 3,            
+                "dropout": 0.4,              
                 
                 "embed_dim": 64,
                 "feature_extractor_layers": 3,
-                "bilstm_layers": 1,
 
                 "batch_size": 16,
                 "loss": "weibull",                
@@ -144,6 +172,7 @@ if __name__ == "__main__":
                 "epochs": 500,
                 "device": "cuda",
                 "segment_len": 900,
+                "use_time_encoding": True
             }
         },
     }

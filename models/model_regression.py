@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
+import torch.nn.utils.weight_norm as weight_norm
 
 from tqdm import tqdm
 
@@ -173,6 +174,153 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         #####
 
 
+class Chomp1d(nn.Module):
+    """
+    Removes the 'future' elements from the 1D convolution output 
+    to ensure the network is strictly causal.
+    """
+    def __init__(self, chomp_size):
+        super(Chomp1d, self).__init__()
+        self.chomp_size = chomp_size
+
+    def forward(self, x):
+        if self.chomp_size > 0:
+            return x[:, :, :-self.chomp_size].contiguous()
+        return x.contiguous()
+
+class TemporalBlock(nn.Module):
+    def __init__(self, n_inputs, n_outputs, kernel_size, stride, dilation, padding, dropout=0.3):
+        super(TemporalBlock, self).__init__()
+        
+        # Causal Conv 1
+        self.conv1 = weight_norm(nn.Conv1d(n_inputs, n_outputs, kernel_size,
+                                           stride=stride, padding=padding, dilation=dilation))
+        self.chomp1 = Chomp1d(padding)
+        self.relu1 = nn.ReLU()
+        self.dropout1 = nn.Dropout(dropout)
+
+        # Causal Conv 2
+        self.conv2 = weight_norm(nn.Conv1d(n_outputs, n_outputs, kernel_size,
+                                           stride=stride, padding=padding, dilation=dilation))
+        self.chomp2 = Chomp1d(padding)
+        self.relu2 = nn.ReLU()
+        self.dropout2 = nn.Dropout(dropout)
+
+        self.net = nn.Sequential(self.conv1, self.chomp1, self.relu1, self.dropout1,
+                                 self.conv2, self.chomp2, self.relu2, self.dropout2)
+        
+        # Residual connection if input and output dimensions differ
+        self.downsample = nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
+        self.relu = nn.ReLU()
+        self.init_weights()
+
+    def init_weights(self):
+        self.conv1.weight.data.normal_(0, 0.01)
+        self.conv2.weight.data.normal_(0, 0.01)
+        if self.downsample is not None:
+            self.downsample.weight.data.normal_(0, 0.01)
+
+    def forward(self, x):
+        out = self.net(x)
+        res = x if self.downsample is None else self.downsample(x)
+        return self.relu(out + res)
+
+
+class CNNTCNMLPRegressor(nn.Module):
+    def __init__(self, segment_len, embed_dim=64, dropout=0.4, feature_extractor_layers=1, kernel_size=3, use_time_encoding=True):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.feature_extractor_layers = feature_extractor_layers
+        
+        # 1. Feature Extraction (Identical to BiLSTM to keep spatial interpretation)
+        self.feature_extractors = nn.ModuleList([
+            CNNFeatureExtractor(input_len=segment_len, embedding_dim=embed_dim)
+            for _ in range(feature_extractor_layers)
+        ])
+        
+        self.cnn_aggregation = nn.Linear(embed_dim * feature_extractor_layers, embed_dim)
+        self.variate_attention = GatedAttention(dim=embed_dim, hidden_dim=embed_dim//4)
+        
+        self.use_time_encoding = use_time_encoding
+        if self.use_time_encoding:
+            self.time_projection = RotaryTimeEmbedding(embed_dim, max_time=1500000.0)
+            
+        # 2. TCN Sequence Modeling
+        num_channels = [embed_dim, embed_dim, embed_dim, embed_dim, embed_dim]
+        layers = []
+        num_levels = len(num_channels)
+        for i in range(num_levels):
+            dilation_size = 2 ** i
+            in_channels = embed_dim if i == 0 else num_channels[i-1]
+            out_channels = num_channels[i]
+            # Padding formula ensures strict causality
+            padding = (kernel_size - 1) * dilation_size 
+            layers.append(TemporalBlock(in_channels, out_channels, kernel_size, stride=1, 
+                                        dilation=dilation_size, padding=padding, dropout=dropout))
+        
+        self.tcn = nn.Sequential(*layers)
+        
+        # 3. Attention over TCN hidden states
+        self.segment_attention = GatedAttention(dim=num_channels[-1], hidden_dim=num_channels[-1]//4)
+        
+        # 4. Probabilistic Regression Head (Weibull Deep Survival)
+        self.regressor = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(num_channels[-1], num_channels[-1]//2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(num_channels[-1]//2, 2)  # Output 2 parameters: (Alpha, Beta), with Weibull only
+        )
+
+    def forward(self, x, mask=None):
+        B, T, V, L = x.shape
+        
+        if self.use_time_encoding:
+            x_features = x[:, :, :-1, :]  
+            x_lifetime = x[:, :, -1, :]  
+            V_feat = V - 1
+        else:
+            x_features = x
+            V_feat = V
+
+        # --- CNN Feature Extraction ---
+        x_reshaped = x_features.reshape(B * T * V_feat, 1, L)
+        extracted_features = [fe(x_reshaped) for fe in self.feature_extractors]
+            
+        features_cat = torch.cat(extracted_features, dim=-1) 
+        features_agg = self.cnn_aggregation(features_cat) 
+        features = features_agg.view(B * T, V_feat, self.embed_dim)  
+
+        v_weights = self.variate_attention(features, mask=None)  
+        seg_emb = torch.sum(features * v_weights, dim=1).view(B, T, self.embed_dim) 
+        
+        if self.use_time_encoding:
+            time_scalar = x_lifetime.mean(dim=-1).unsqueeze(-1)  
+            seg_emb = seg_emb + self.time_projection(time_scalar)  
+            
+        # --- Temporal Convolutional Network (TCN) ---
+        # TCN expects input shape: (Batch, Channels, Time_Sequence)
+        tcn_input = seg_emb.transpose(1, 2)  # Transforms to (B, embed_dim, T)
+        
+        tcn_out = self.tcn(tcn_input)  # Shape remains (B, embed_dim, T)
+        
+        # Revert shape to (Batch, Time_Sequence, Channels) for attention
+        tcn_out = tcn_out.transpose(1, 2) 
+        
+        # --- Final Attention & Probabilistic Regression ---
+        s_weights = self.segment_attention(tcn_out, mask=mask)
+        context_vector = torch.sum(tcn_out * s_weights, dim=1) 
+          
+        raw_output = self.regressor(context_vector)
+        
+        # Deep Survival Weibull Softplus
+        weibull_params = torch.nn.functional.softplus(raw_output) 
+        alpha = weibull_params[:, 0] 
+        beta = weibull_params[:, 1]  
+        
+        dummy_aux_loss = torch.tensor(0.0, device=x.device)
+        
+        return (alpha, beta), s_weights, v_weights, dummy_aux_loss
 
 if __name__ == "__main__":
     # --- Dummy Data Example ---
@@ -350,7 +498,29 @@ class RegressorTrainingWrapper(TrainingWrapper):
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
         max_segment_number = 150 # Set in the dataset
 
-        model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers, use_time_encoding=use_time_encoding).to(device) 
+        # Dynamic model selection
+        model_type = self.params.get("model_type", "bilstm")
+        
+        if model_type == "tcn":
+            kernel_size = self.params.get("kernel_size", 3)
+            dropout = self.params.get("dropout", 0.4)
+            model = CNNTCNMLPRegressor(
+                segment_len=segment_len, 
+                embed_dim=embed_dim, 
+                dropout=dropout,
+                feature_extractor_layers=feature_extractor_layers, 
+                kernel_size=kernel_size,
+                use_time_encoding=use_time_encoding
+            ).to(device)
+        else: # default to bilstm
+            bilstm_layers = self.params.get("bilstm_layers", 1)
+            model = CNNBiLSTMMLPRegressor(
+                segment_len=segment_len, 
+                embed_dim=embed_dim, 
+                feature_extractor_layers=feature_extractor_layers, 
+                bilstm_layers=bilstm_layers, 
+                use_time_encoding=use_time_encoding
+            ).to(device)
         
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         if loss == "mse":
