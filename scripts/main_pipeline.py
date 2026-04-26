@@ -126,55 +126,19 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Example usage
-
-    # models_config = {
-    #     "regr_64e_3_1_5e4": {
-    #         "model_class": RegressorTrainingWrapper,
-    #         "params": {
-    #             "name": "regr_64e_bs16_3_1",
-    #             "embed_dim": 64,
-    #             "feature_extractor_layers": 3,
-    #             "bilstm_layers": 1,
-    #             "batch_size": 16,
-    #             "loss": "huber",                
-    #             "lr": 5e-4,
-    #             "patience": 25,
-    #             "epochs": 500,
-    #             "device": "cuda",
-    #             "segment_len": 900,
-    #         }
-    #     },
-    # }
-
     models_config = {
-        "hmm_16_t": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "hmm_regr_64e_bs16_fel3_ns16_t", 
-                "model_type": "hmm",              
-                "embed_dim": 64,
-                "feature_extractor_layers": 3,
-                "num_states": 16,                 
-                "batch_size": 16,
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                # "device": "cpu",
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
         "hmm_64_t": {
             "model_class": RegressorTrainingWrapper,
             "params": {
                 "name": "hmm_regr_64e_bs16_fel3_ns64_t", 
+
                 "model_type": "hmm",              
                 "embed_dim": 64,
-                "feature_extractor_layers": 3,
-                "num_states": 64,                 
                 "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "num_states": 64,
+                "use_time_encoding": True,
+
                 "loss": "huber",                
                 "lr": 5e-4,
                 "patience": 25,
@@ -184,16 +148,18 @@ if __name__ == "__main__":
                 "segment_len": 900,
             }
         },
-        "hmm_64_no": {
+        "hmm_512_t": {
             "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "hmm_regr_64e_bs16_fel3_ns64_no", 
+                "name": "hmm_regr_64e_bs16_fel3_ns512_t", 
+
                 "model_type": "hmm",              
                 "embed_dim": 64,
-                "feature_extractor_layers": 3,
-                "num_states": 64,  
-                "use_time_encoding": False,              
                 "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "num_states": 512,
+                "use_time_encoding": True,
+
                 "loss": "huber",                
                 "lr": 5e-4,
                 "patience": 25,
@@ -207,12 +173,13 @@ if __name__ == "__main__":
             "model_class": RegressorTrainingWrapper,
             "params": {
                 "name": "bilstm_regr_64e_bs16_fel3_t", 
+
                 "model_type": "bilstm",              
                 "embed_dim": 64,
-                "feature_extractor_layers": 3,
-                "num_states": 64,     
-                "use_time_encoding": True,           
                 "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,           
+                
                 "loss": "huber",                
                 "lr": 5e-4,
                 "patience": 25,
@@ -226,12 +193,13 @@ if __name__ == "__main__":
             "model_class": RegressorTrainingWrapper,
             "params": {
                 "name": "bilstm_regr_64e_bs16_fel3_no", 
+
                 "model_type": "bilstm",              
                 "embed_dim": 64,
-                "feature_extractor_layers": 3,
-                "num_states": 64,     
-                "use_time_encoding": False,           
                 "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": False,           
+                
                 "loss": "huber",                
                 "lr": 5e-4,
                 "patience": 25,
@@ -248,7 +216,7 @@ if __name__ == "__main__":
         pytorch_dir=args.pytorch_dir,
         augment_data=args.augment_data,
         scaler=args.scaler,
-        n_splits=2,
+        n_splits=5,
     )
 
     # Calculate average results

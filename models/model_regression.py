@@ -11,7 +11,7 @@ from .wrappers import TrainingWrapper, BenchmarkWrapper, VisualizationWrapper
 from .utils.cnn_features_extractor import CNNFeatureExtractor
 from .utils.gated_attention import GatedAttention
 
-class RotaryTimeEmbedding(nn.Module):
+class SinusoidalTimeEmbedding(nn.Module):
     def __init__(self, embed_dim, max_time=1000000.0):
         super().__init__()
         self.embed_dim = embed_dim
@@ -63,7 +63,7 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         # Time projection for Lifetime feature
         self.use_time_encoding = use_time_encoding
         if self.use_time_encoding:
-            self.time_projection = RotaryTimeEmbedding(embed_dim, max_time=1500000.0)
+            self.time_projection = SinusoidalTimeEmbedding(embed_dim, max_time=1500000.0)
             print(f"[WARNING] Model: Time encoding enabled. Ensure presence of Lifetime feature and that max_time is set appropriately for the scale of Lifetime values.")
         else: 
             print(f"[INFO] Model: Time encoding disabled. Lifetime feature will not be used for temporal awareness.")
@@ -79,6 +79,10 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         )
 
     def compute_orthogonality_loss(self):
+        """
+        This function encourages the BiLSTM layers to learn diverse representations.
+        It computes the pairwise cosine similarity between the concatenated weight matrices of each BiLSTM layer.
+        """
         if self.bilstm_layers <= 1:
             return torch.tensor(0.0, device=next(self.parameters()).device)
         
@@ -183,7 +187,7 @@ class CNNHMMMLPRegressor(nn.Module):
         
         self.use_time_encoding = use_time_encoding
         if self.use_time_encoding:
-            self.time_projection = RotaryTimeEmbedding(embed_dim, max_time=1500000.0)
+            self.time_projection = SinusoidalTimeEmbedding(embed_dim, max_time=1500000.0)
             
         # 2. HMM Components 
         # Transition matrix: (num_states, num_states)

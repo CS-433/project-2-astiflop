@@ -581,8 +581,17 @@ class LPBSDataset(Dataset):
                 maxs = []
                 
                 num_features = all_data.shape[2]
+                assert num_features == 4, f"Expected 4 features (X, Y, Speed, Lifetime) but got {num_features}"
                 
                 for f in range(num_features):
+                    if f == 3:
+                        # Lifetime should not be normalized
+                        means.append(0.0)
+                        stds.append(1.0)
+                        mins.append(0.0)
+                        maxs.append(1.0)
+                        continue
+
                     feat_data = all_data[:, :, f, :] # (N, S, L)
                     feat_mask = mask[:, :, 0, :]   # (N, S, L)
                     
@@ -594,6 +603,7 @@ class LPBSDataset(Dataset):
                         mins.append(valid_vals.min().item())
                         maxs.append(valid_vals.max().item())
                     else:
+                        print(f"[WARNING] No valid values found for feature index {f}. Defaulting to mean=0 and std=1.")
                         means.append(0.0)
                         stds.append(1.0)
                         mins.append(0.0)
