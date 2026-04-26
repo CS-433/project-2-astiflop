@@ -4,13 +4,13 @@ from torch.nn.utils.rnn import pad_sequence
 import torch.nn.utils.weight_norm as weight_norm
 
 from tqdm import tqdm
-
-from .wrappers import TrainingWrapper, BenchmarkWrapper
-from .utils.cnn_features_extractor import CNNFeatureExtractor
-from .utils.gated_attention import GatedAttention
-
 import random
 import time
+import os
+
+from .wrappers import TrainingWrapper, BenchmarkWrapper, VisualizationWrapper
+from .utils.cnn_features_extractor import CNNFeatureExtractor
+from .utils.gated_attention import GatedAttention
 
 class RotaryTimeEmbedding(nn.Module):
     def __init__(self, embed_dim, max_time=1000000.0):
@@ -26,6 +26,9 @@ class RotaryTimeEmbedding(nn.Module):
         emb = torch.cat([torch.sin(sinusoid_inp), torch.cos(sinusoid_inp)], dim=-1)
         return emb
 
+# ---------------------------------------------------------
+# MODEL 1: The Original BiLSTM
+# ---------------------------------------------------------
 class CNNBiLSTMMLPRegressor(nn.Module):
     def __init__(self, segment_len, embed_dim=512, dropout=0.3, feature_extractor_layers=1, bilstm_layers=1, use_time_encoding=True):
         """
@@ -173,6 +176,115 @@ class CNNBiLSTMMLPRegressor(nn.Module):
         return (alpha, beta), s_weights, v_weights, ortho_loss
         #####
 
+# ---------------------------------------------------------
+# MODEL 2: The New PyTorch-Struct HMM
+# ---------------------------------------------------------
+class CNNHMMMLPRegressor(nn.Module):
+    def __init__(self, segment_len, embed_dim=512, dropout=0.3, feature_extractor_layers=1, num_states=16, use_time_encoding=True):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.feature_extractor_layers = feature_extractor_layers
+        self.num_states = num_states
+        
+        # 1. Feature Extraction (Identical to BiLSTM)
+        self.feature_extractors = nn.ModuleList([
+            CNNFeatureExtractor(input_len=segment_len, embedding_dim=embed_dim)
+            for _ in range(feature_extractor_layers)
+        ])
+        
+        self.cnn_aggregation = nn.Linear(embed_dim * feature_extractor_layers, embed_dim)
+        self.variate_attention = GatedAttention(dim=embed_dim, hidden_dim=embed_dim//4)
+        
+        self.use_time_encoding = use_time_encoding
+        if self.use_time_encoding:
+            self.time_projection = RotaryTimeEmbedding(embed_dim, max_time=1500000.0)
+            
+        # 2. HMM Components 
+        # Transition matrix: (num_states, num_states)
+        self.transition_logits = nn.Parameter(torch.randn(num_states, num_states))
+        
+        self.init_logits = nn.Parameter(torch.randn(num_states))
+        # Maps CNN features to emission log-probabilities for each state
+        self.emission_network = nn.Linear(embed_dim, num_states)
+        
+        # 3. Attention over HMM State Marginals
+        self.segment_attention = GatedAttention(dim=num_states, hidden_dim=num_states//2)
+        
+        # 4. Final Regression Head
+        self.regressor = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(num_states, num_states//2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(num_states//2, 1)
+        )
+
+    def forward(self, x, mask=None):
+        B, T, V, L = x.shape
+        
+        if self.use_time_encoding:
+            x_features = x[:, :, :-1, :]  
+            x_lifetime = x[:, :, -1, :]  
+            V_feat = V - 1
+        else:
+            x_features = x
+            V_feat = V
+
+        # --- CNN Feature Extraction ---
+        x_reshaped = x_features.reshape(B * T * V_feat, 1, L)
+        extracted_features = [fe(x_reshaped) for fe in self.feature_extractors]
+            
+        features_cat = torch.cat(extracted_features, dim=-1) 
+        features_agg = self.cnn_aggregation(features_cat) 
+        features = features_agg.view(B * T, V_feat, self.embed_dim)  
+
+        v_weights = self.variate_attention(features, mask=None)  
+        seg_emb = torch.sum(features * v_weights, dim=1).view(B, T, self.embed_dim) 
+        
+        if self.use_time_encoding:
+            time_scalar = x_lifetime.mean(dim=-1).unsqueeze(-1)  
+            seg_emb = seg_emb + self.time_projection(time_scalar)  
+            
+        # Get emission log-probabilities for the sequence: (B, T, num_states)
+        emission_logits = self.emission_network(seg_emb)
+        
+        # Normalize transitions and inits to log-probabilities
+        trans_log_probs = torch.log_softmax(self.transition_logits, dim=-1)
+        init_log_probs = torch.log_softmax(self.init_logits, dim=-1)
+        
+        # Determine sequence lengths for torch_struct
+        lengths = mask.sum(dim=1).long() if mask is not None else torch.full((B,), T, device=x.device, dtype=torch.long)
+        
+        # Initialize alpha values (log probabilities)
+        alpha = torch.zeros(B, T, self.num_states, device=x.device)
+        alpha[:, 0, :] = init_log_probs.unsqueeze(0) + emission_logits[:, 0, :]
+        
+        # Differentiable Forward Pass
+        for t in range(1, T):
+            prev_alpha = alpha[:, t-1, :].unsqueeze(2)  # (B, num_states, 1)
+            trans = trans_log_probs.unsqueeze(0)        # (1, num_states, num_states)
+            
+            # logsumexp computes log( sum( exp(prev_alpha + trans) ) ) safely
+            log_prob_prior = torch.logsumexp(prev_alpha + trans, dim=1) 
+            alpha[:, t, :] = log_prob_prior + emission_logits[:, t, :]
+            
+        # 1. Negative Log-Likelihood (NLL) Loss for training
+        batch_indices = torch.arange(B, device=x.device)
+        seq_log_likelihood = torch.logsumexp(alpha[batch_indices, lengths - 1, :], dim=-1)
+        nll_loss = -seq_log_likelihood.mean()
+        
+        # 2. State Marginals P(z_t | x_{1:t})
+        # Softmax over alpha gives exact causal filtering probabilities for attention
+        marginals = torch.softmax(alpha, dim=-1)
+        
+        # --- Final Regression using HMM States ---
+        # Instead of LSTM hidden states, we apply attention over the HMM state probabilities
+        s_weights = self.segment_attention(marginals, mask=mask)
+        context_vector = torch.sum(marginals * s_weights, dim=1) # (B, num_states)
+          
+        output = self.regressor(context_vector).squeeze(-1) 
+        
+        return output, s_weights, v_weights, nll_loss
 
 class Chomp1d(nn.Module):
     """
@@ -333,27 +445,46 @@ if __name__ == "__main__":
     # --- Dummy Data Example ---
     B, T, V, L = 4, 10, 4, 900
     dummy_input = torch.randn(B, T, V, L)
-    model = CNNBiLSTMMLPRegressor(segment_len=L, embed_dim=128, feature_extractor_layers=3, bilstm_layers=2)
-    output, s_weights, v_weights, ortho_loss = model(dummy_input)
-    print(f"Output shape: {output.shape} (expected: ({B},)) ")
-    print(f"Segment Attention Weights shape: {s_weights.shape} (expected: ({B}, {T}, 1))")
-    print(f"Variate Attention Weights shape: {v_weights.shape} (expected: ({B*T}, {V-1}, 1))")
-    print(f"Ortho Loss shape: {ortho_loss.shape} - Value: {ortho_loss.item()}")
-    print(f"Nan detected in the output: {torch.isnan(output).any()}")
     
+    print("\nTESTING CNN-BiLSTM REGRESSOR")
+    model_lstm = CNNBiLSTMMLPRegressor(segment_len=L, embed_dim=128, feature_extractor_layers=3, bilstm_layers=2)
+    output_lstm, s_weights_lstm, v_weights_lstm, ortho_loss = model_lstm(dummy_input)
+    print(f"Output shape: {output_lstm.shape} (expected: ({B},)) ")
+    print(f"Segment Attention Weights shape: {s_weights_lstm.shape} (expected: ({B}, {T}, 1))")
+    print(f"Variate Attention Weights shape: {v_weights_lstm.shape} (expected: ({B*T}, {V-1}, 1))")
+    print(f"Ortho Loss shape: {ortho_loss.shape} - Value: {ortho_loss.item()}")
+    print(f"NaN detected in the output: {torch.isnan(output_lstm).any()}\n")
 
 
+    print("\nTESTING CNN-HMM REGRESSOR")
+    # Using num_states=16 instead of bilstm_layers
+    model_hmm = CNNHMMMLPRegressor(segment_len=L, embed_dim=128, feature_extractor_layers=3, num_states=16)
+    output_hmm, s_weights_hmm, v_weights_hmm, nll_loss = model_hmm(dummy_input)
+    print(f"Output shape: {output_hmm.shape} (expected: ({B},)) ")
+    print(f"Segment Attention Weights shape: {s_weights_hmm.shape} (expected: ({B}, {T}, 1))")
+    print(f"Variate Attention Weights shape: {v_weights_hmm.shape} (expected: ({B*T}, {V-1}, 1))")
+    print(f"NLL (Partition) Loss shape: {nll_loss.shape} - Value: {nll_loss.item()}")
+    print(f"NaN detected in the output: {torch.isnan(output_hmm).any()}")
 
+# ---------------------------------------------------------
+# UNIFIED WRAPPERS
+# ---------------------------------------------------------
 class RegressorBenchmarkWrapper(BenchmarkWrapper):
     def load(self, path):
+        model_type = self.params.get("model_type", "bilstm")
         embed_dim = self.params.get("embed_dim", 64)
         segment_len = self.params.get("segment_len", 900)
         feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
-        bilstm_layers = self.params.get("bilstm_layers", 1)
         use_time_encoding = self.params.get("use_time_encoding", True)
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
         
-        self.model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers, use_time_encoding=use_time_encoding).to(device)
+        if model_type == "hmm":
+            num_states = self.params.get("num_states", 16)
+            self.model = CNNHMMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, num_states=num_states, use_time_encoding=use_time_encoding).to(device)
+        else:
+            bilstm_layers = self.params.get("bilstm_layers", 1)
+            self.model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers, use_time_encoding=use_time_encoding).to(device)
+            
         self.model.load_state_dict(torch.load(path, map_location=device))
         self.model.eval()
 
@@ -408,7 +539,9 @@ class RegressorTrainingWrapper(TrainingWrapper):
     def _forward_pass(self, model, batch_data, total_lengths, criterion, comparison_criterion, device, max_segment_number, is_training=True):
         B, T_max, V, L = batch_data.shape
         batch_data = batch_data.cpu()
-        ortho_beta = self.params.get("ortho_beta", 0.01)
+        
+        # This acts as Ortho Beta for BiLSTM, or NLL Beta for the HMM
+        aux_beta = self.params.get("aux_beta", self.params.get("ortho_beta", 0.01))
 
         X_staircase = []
         Y_staircase = []
@@ -444,10 +577,9 @@ class RegressorTrainingWrapper(TrainingWrapper):
         lengths_tensor = torch.tensor([len(x) for x in X_staircase], device=device).unsqueeze(1)
         mask = (indices < lengths_tensor).float()
 
-        # Forward pass    
-        preds, _, _, ortho_loss = model(X_padded, mask=mask)
-        
-        loss = criterion(preds, targets) + ortho_beta * ortho_loss
+        # Forward pass
+        preds, _, _, aux_loss = model(X_padded, mask=mask)
+        loss = criterion(preds, targets) + aux_beta * aux_loss
         
         if not is_training and comparison_criterion is not None:
             # If preds is a Weibull tuple, use alpha as the point prediction for MSE comparison
@@ -492,18 +624,18 @@ class RegressorTrainingWrapper(TrainingWrapper):
             return -log_likelihood.mean()
 
     def train_on_fold(self, training_loader, validation_loader):
-        name = self.params.get("name", "regressor")
+        model_type = self.params.get("model_type", "bilstm")
+        name = self.params.get("name", f"{model_type}_regressor")
         lr = self.params.get("lr", 1e-4)
         embed_dim = self.params.get("embed_dim", 64)
         epochs = self.params.get("epochs", 100)
         patience = self.params.get("patience", 10)
         segment_len = self.params.get("segment_len", 900)
-        loss = self.params.get("loss", "mse")
+        loss_type = self.params.get("loss", "mse")
         feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
-        bilstm_layers = self.params.get("bilstm_layers", 1)
         use_time_encoding = self.params.get("use_time_encoding", True)
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-        max_segment_number = 150 # Set in the dataset
+        max_segment_number = 150 
 
         # Dynamic model selection
         model_type = self.params.get("model_type", "bilstm")
@@ -519,6 +651,15 @@ class RegressorTrainingWrapper(TrainingWrapper):
                 kernel_size=kernel_size,
                 use_time_encoding=use_time_encoding
             ).to(device)
+        elif model_type == "hmm":
+            num_states = self.params.get("num_states", 16)
+            model = CNNHMMMLPRegressor(
+                segment_len=segment_len, 
+                embed_dim=embed_dim, 
+                feature_extractor_layers=feature_extractor_layers, 
+                num_states=num_states, 
+                use_time_encoding=use_time_encoding
+            ).to(device)
         else: # default to bilstm
             bilstm_layers = self.params.get("bilstm_layers", 1)
             model = CNNBiLSTMMLPRegressor(
@@ -530,13 +671,14 @@ class RegressorTrainingWrapper(TrainingWrapper):
             ).to(device)
         
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        if loss == "mse":
+        
+        if loss_type == "mse":
             criterion = nn.MSELoss()
-        elif loss == "mae":
+        elif loss_type == "mae":
             criterion = nn.L1Loss()
-        elif loss == "weibull":
+        elif loss_type == "weibull":
             criterion = self.weibull_nll_loss
-        elif loss == "huber":
+        elif loss_type == "huber":
             criterion = nn.SmoothL1Loss()
 
         best_loss = float('inf')
@@ -575,13 +717,13 @@ class RegressorTrainingWrapper(TrainingWrapper):
 
             if val_loss < best_loss:
                 best_loss = val_loss
+
+            if comparison_loss < best_comparison_loss:
+                best_comparison_loss = comparison_loss
                 epochs_no_improve = 0
                 best_model_state = model.state_dict()
             else:
                 epochs_no_improve += 1
-
-            if comparison_loss < best_comparison_loss:
-                best_comparison_loss = comparison_loss
             
             # Summary of epoch:
             if epoch % 10 == 0:  # Print every 10 epochs
@@ -594,7 +736,68 @@ class RegressorTrainingWrapper(TrainingWrapper):
         if best_model_state is not None:
             model.load_state_dict(best_model_state)
             datetime_str = time.strftime("%H-%M")
+            os.makedirs("ckpts", exist_ok=True)
             torch.save(model.state_dict(), f"ckpts/best_{name}_{datetime_str}.pth")
             print(f"Best model saved with comparison loss: {best_comparison_loss:.4f} at time {datetime_str}")
 
         return {"best_loss": best_loss, "comparison_loss": best_comparison_loss}, model
+
+class RegressorVisualizationWrapper(VisualizationWrapper):
+    def load(self, path):
+        model_type = self.params.get("model_type", "bilstm")
+        embed_dim = self.params.get("embed_dim", 64)
+        segment_len = self.params.get("segment_len", 900)
+        feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
+        use_time_encoding = self.params.get("use_time_encoding", True)
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        
+        if model_type == "hmm":
+            num_states = self.params.get("num_states", 16)
+            self.model = CNNHMMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, num_states=num_states, use_time_encoding=use_time_encoding).to(device)
+        else:
+            bilstm_layers = self.params.get("bilstm_layers", 1)
+            self.model = CNNBiLSTMMLPRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, bilstm_layers=bilstm_layers, use_time_encoding=use_time_encoding).to(device)
+            
+        if path and os.path.exists(path):
+            self.model.load_state_dict(torch.load(path, map_location=device))
+        self.model.eval()
+
+    def get_trajectory_predictions(self, data_tensor, total_segments):
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        max_segment_number = 150
+        T_actual = int(total_segments)
+        
+        predictions = []
+        variances = []
+        s_weights_all = []
+        v_weights_all = []
+        
+        with torch.no_grad():
+            for t in range(1, T_actual + 1):
+                x_t = data_tensor[:t].unsqueeze(0).to(device)
+                mask = torch.ones(1, t).to(device)
+                
+                out = self.model(x_t, mask=mask)
+                if isinstance(out, tuple):
+                    output = out[0]
+                    s_weights = out[1] if len(out) > 1 and out[1] is not None else torch.zeros(1, t)
+                    v_weights = out[2] if len(out) > 2 and out[2] is not None else torch.zeros(1, t, 3)
+                else:
+                    output = out
+                    s_weights = torch.zeros(1, t)
+                    v_weights = torch.zeros(1, t, 3)
+                
+                # Denormalize
+                pred_val = output.item() * (max_segment_number / 3.0)
+                predictions.append(pred_val)
+                # Heuristic variance as seen in benchmark
+                variances.append(10.0 if pred_val > 45 else 2.0)
+                
+                s_weights_all.append(s_weights.squeeze().cpu().numpy())
+                v_weights_all.append(v_weights.squeeze().cpu().numpy())
+
+        custom_data = {
+            "s_weights": s_weights_all,
+            "v_weights": v_weights_all
+        }
+        return predictions, variances, custom_data

@@ -1,3 +1,24 @@
+"""
+Script to visualize the interpretation of regression outputs for C. elegans lifespan prediction.
+This script loads a .pt file containing the inference dump from a regression model and creates an interactive
+visualization with multiple subplots:
+1. A timeline plot showing the true remaining lifespan and predicted remaining lifespan over time, with confidence intervals.
+2. A trajectory plot showing the movement of the worm in 2D space, with segments colored by time.
+3. An attention box plot showing the attention weights for different features at the current segment.
+4. A trajectory plot highlighting the segments with the most attention at the current time step.
+
+The .pt file should contain the following keys:
+- 'T_actual': The actual number of segments observed (integer).
+- 'true_objective': The true objective values of the model (numpy array).
+- 'true_remaining': The true remaining lifespan values (numpy array). Should be T_actual in length and be T_actual - t.
+- 'predictions': The predicted remaining lifespan values (numpy array). Should be T_actual in length.
+- 'variances': The predicted variances of the remaining lifespan (numpy array). Should be T_actual in length.
+- 's_weights_cpu': A list of numpy arrays containing the s_weights for each segment.
+- 'v_weights_cpu': A list of numpy arrays containing the v_weights for each segment.
+- 'data_tensor': A numpy array containing the trajectory data of shape (T_actual, 3, segment_length), where the 3 channels are [X, Y, Speed].
+"""
+
+
 import torch
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
