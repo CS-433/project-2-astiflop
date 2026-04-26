@@ -1,0 +1,281 @@
+import os
+import time
+import random
+import torch
+import torch.nn as nn
+from torch.nn.utils.rnn import pad_sequence
+from tqdm import tqdm
+
+from models.wrappers import BenchmarkWrapper, TrainingWrapper, VisualizationWrapper
+from models.cnn_attention_models.cnn_attention_model import CNNAttentionRegressor
+
+class RegressorBenchmarkWrapper(BenchmarkWrapper):
+    def load(self, path):
+        model_type = self.params.get("model_type")
+        embed_dim = self.params.get("embed_dim")
+        segment_len = self.params.get("segment_len")
+        feature_extractor_layers = self.params.get("feature_extractor_layers")
+        use_time_encoding = self.params.get("use_time_encoding")
+        device = self.params.get("device")
+        
+        if model_type == "hmm":
+            temporal_params = {"num_states": self.params.get("num_states")}
+            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="hmm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+        else:
+            temporal_params = {"bilstm_layers": self.params.get("bilstm_layers")}
+            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="bilstm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+            
+        self.model.load_state_dict(torch.load(path, map_location=device))
+        self.model.eval()
+
+    def benchmark(self, test_loader):
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        max_segment_number = 150 # Set in the dataset
+        
+        all_trajectory_preds = []
+        all_trajectory_vars = []
+        
+        with torch.no_grad():
+            for X, _, total_segment_len in test_loader:
+                B, T_max, V, L = X.shape
+                X = X.cpu()
+                
+                for i in range(B):
+                    T_actual = int(total_segment_len[i].item())
+                    full_trajectory = X[i]
+                    
+                    X_staircase = []
+                    for t in range(1, T_actual + 1):
+                        X_staircase.append(full_trajectory[:t])
+                        
+                    # Batch prediction for this single trajectory
+                    X_padded = pad_sequence(X_staircase, batch_first=True).to(device)
+                    indices = torch.arange(X_padded.size(1), device=device).expand(len(X_staircase), -1)
+                    lengths_tensor = torch.tensor([len(x) for x in X_staircase], device=device).unsqueeze(1)
+                    mask = (indices < lengths_tensor).float()
+                    
+                    trajectory_preds, _, _, _ = self.model(X_padded, mask=mask)
+                    trajectory_preds = trajectory_preds.cpu().numpy()
+
+                    # Denormalize predictions to true RUL scale (number of segments)
+                    trajectory_preds = trajectory_preds * (max_segment_number / 3.0)
+                    
+                    # Variance estimation with heuristic
+                    trajectory_vars = [10.0 if pred > 45 else 2.0 for pred in trajectory_preds]
+
+                    all_trajectory_preds.append(trajectory_preds)
+                    all_trajectory_vars.append(trajectory_vars)
+                    
+        return {
+            "predictions": all_trajectory_preds,
+            "variances": all_trajectory_vars,
+            "interpretability_score": 7.5
+        }
+
+class RegressorTrainingWrapper(TrainingWrapper): 
+    def _forward_pass(self, model, batch_data, total_lengths, criterion, comparison_criterion, device, max_segment_number, is_training=True):
+        B, T_max, V, L = batch_data.shape
+        batch_data = batch_data.cpu()
+        
+        # This acts as Ortho Beta for BiLSTM, or NLL Beta for the HMM
+        aux_beta = self.params.get("aux_beta", self.params.get("ortho_beta", 0.01))
+
+        X_staircase = []
+        Y_staircase = []
+        
+        # Sampling parameters
+        num_samples_train = 4
+        val_stride = 10         # Striding in validation for reproducibility
+        
+        for i in range(B):
+            T_actual = int(total_lengths[i].item())
+            full_trajectory = batch_data[i] # (T_max, V, L) sur CPU
+            
+            if is_training:
+                if T_actual <= num_samples_train:
+                    indices = list(range(1, T_actual + 1))
+                else:
+                    indices = random.sample(range(1, T_actual + 1), num_samples_train)
+            else:
+                indices = list(range(1, T_actual + 1, val_stride))
+                if indices[-1] != T_actual: indices.append(T_actual)
+
+            for t in indices:
+                y = min(T_actual - t, max_segment_number//3) # Reduce difficulty of the task
+                y = 3*float(y)/max_segment_number # Normalized between 0 and 1 for easier gradients computations
+                X_staircase.append(full_trajectory[:t]) 
+                Y_staircase.append(y) 
+
+        X_padded = pad_sequence(X_staircase, batch_first=True).to(device)
+        targets = torch.tensor(Y_staircase, device=device).float()
+        
+        # Attention mask
+        indices = torch.arange(X_padded.size(1), device=device).expand(len(X_staircase), -1)
+        lengths_tensor = torch.tensor([len(x) for x in X_staircase], device=device).unsqueeze(1)
+        mask = (indices < lengths_tensor).float()
+
+        # Forward pass
+        preds, _, _, aux_loss = model(X_padded, mask=mask)
+        loss = criterion(preds, targets) + aux_beta * aux_loss
+        
+        if not is_training and comparison_criterion is not None:
+            comparison_loss = comparison_criterion(preds, targets)
+            return loss, comparison_loss
+
+        return loss
+
+    def train_on_fold(self, training_loader, validation_loader):
+        model_type = self.params.get("model_type")
+        name = self.params.get("name")
+        lr = self.params.get("lr")
+        embed_dim = self.params.get("embed_dim")
+        epochs = self.params.get("epochs")
+        patience = self.params.get("patience")
+        segment_len = self.params.get("segment_len")
+        loss_type = self.params.get("loss")
+        feature_extractor_layers = self.params.get("feature_extractor_layers")
+        use_time_encoding = self.params.get("use_time_encoding")
+        device = self.params.get("device")
+        max_segment_number = 150 
+
+        # Unified Instantiation
+        if model_type == "hmm":
+            num_states = self.params.get("num_states")
+            temporal_params = {"num_states": num_states}
+            model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="hmm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+        else:
+            bilstm_layers = self.params.get("bilstm_layers")
+            temporal_params = {"bilstm_layers": bilstm_layers}
+            model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="bilstm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+        
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        
+        if loss_type == "mse":
+            criterion = nn.MSELoss()
+        elif loss_type == "mae":
+            criterion = nn.L1Loss()
+        elif loss_type == "huber":
+            criterion = nn.SmoothL1Loss()
+
+        best_loss = float('inf')
+        comparison_criterion = nn.MSELoss()
+        best_comparison_loss = float('inf')
+
+        epochs_no_improve = 0
+        best_model_state = None
+
+        for epoch in tqdm(range(epochs), desc=f"Training {model.__class__.__name__}"):
+            model.train()
+            train_loss = 0.0
+
+            for batch_data, _, total_lengths in training_loader:
+                loss = self._forward_pass(model, batch_data, total_lengths, criterion, None, device, max_segment_number=max_segment_number, is_training=True)
+                
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                train_loss += loss.item()
+            avg_train_loss = train_loss / len(training_loader)
+            
+            
+            # Validation
+            model.eval()
+            val_loss = 0.0
+            comparison_loss = 0.0
+            with torch.no_grad():
+                for X, _, total_segment_len in validation_loader:
+                    loss, comparison = self._forward_pass(model, X, total_segment_len, criterion, comparison_criterion, device, max_segment_number=max_segment_number, is_training=False)
+                    val_loss += loss.item()
+                    comparison_loss += comparison.item()
+            val_loss /= len(validation_loader)
+            comparison_loss /= len(validation_loader)
+
+
+            if val_loss < best_loss:
+                best_loss = val_loss
+
+            if comparison_loss < best_comparison_loss:
+                best_comparison_loss = comparison_loss
+                epochs_no_improve = 0
+                best_model_state = model.state_dict()
+            else:
+                epochs_no_improve += 1
+            
+            # Summary of epoch:
+            if epoch % 10 == 0:  # Print every 10 epochs
+                tqdm.write(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Loss: {val_loss:.4f}, Comparison Loss: {comparison_loss:.4f}. Patience: {epochs_no_improve}/{patience} {'<- Best' if epochs_no_improve==0 else ''}")
+            
+            # Early stopping
+            if epochs_no_improve >= patience:
+                break
+
+        if best_model_state is not None:
+            model.load_state_dict(best_model_state)
+            datetime_str = time.strftime("%H-%M")
+            os.makedirs("ckpts", exist_ok=True)
+            torch.save(model.state_dict(), f"ckpts/best_{name}_{datetime_str}.pth")
+            print(f"Best model saved with comparison loss: {best_comparison_loss:.4f} at time {datetime_str}")
+
+        return {"best_loss": best_loss, "comparison_loss": best_comparison_loss}, model
+
+class RegressorVisualizationWrapper(VisualizationWrapper):
+    def load(self, path):
+        model_type = self.params.get("model_type", "bilstm")
+        embed_dim = self.params.get("embed_dim", 64)
+        segment_len = self.params.get("segment_len", 900)
+        feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
+        use_time_encoding = self.params.get("use_time_encoding", True)
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        
+        if model_type == "hmm":
+            num_states = self.params.get("num_states", 16)
+            temporal_params = {"num_states": num_states}
+            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="hmm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+        else:
+            bilstm_layers = self.params.get("bilstm_layers", 1)
+            temporal_params = {"bilstm_layers": bilstm_layers}
+            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="bilstm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+            
+        if path and os.path.exists(path):
+            self.model.load_state_dict(torch.load(path, map_location=device))
+        self.model.eval()
+
+    def get_trajectory_predictions(self, data_tensor, total_segments):
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        max_segment_number = 150
+        T_actual = int(total_segments)
+        
+        predictions = []
+        variances = []
+        s_weights_all = []
+        v_weights_all = []
+        
+        with torch.no_grad():
+            for t in range(1, T_actual + 1):
+                x_t = data_tensor[:t].unsqueeze(0).to(device)
+                mask = torch.ones(1, t).to(device)
+                
+                out = self.model(x_t, mask=mask)
+                if isinstance(out, tuple):
+                    output = out[0]
+                    s_weights = out[1] if len(out) > 1 and out[1] is not None else torch.zeros(1, t)
+                    v_weights = out[2] if len(out) > 2 and out[2] is not None else torch.zeros(1, t, 3)
+                else:
+                    output = out
+                    s_weights = torch.zeros(1, t)
+                    v_weights = torch.zeros(1, t, 3)
+                
+                # Denormalize
+                pred_val = output.item() * (max_segment_number / 3.0)
+                predictions.append(pred_val)
+                # Heuristic variance as seen in benchmark
+                variances.append(10.0 if pred_val > 45 else 2.0)
+                
+                s_weights_all.append(s_weights.squeeze().cpu().numpy())
+                v_weights_all.append(v_weights.squeeze().cpu().numpy())
+
+        custom_data = {
+            "s_weights": s_weights_all,
+            "v_weights": v_weights_all
+        }
+        return predictions, variances, custom_data

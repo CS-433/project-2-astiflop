@@ -15,13 +15,7 @@ from utils.plot_utils.presents_results import (
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import GroupKFold
 
-# from models.model_lr import LogisticRegWrapper
-# from models.model_rocket import RocketWrapper
-# from models.model_rf import RandomForestWrapper
-# from models.model_xgboost import XGBoostWrapper
-# from models.model_svm import SVMWrapper
-# from models.model_tail_mil import TailMilClassificationWrapper
-from models.model_regression import RegressorTrainingWrapper
+from models.cnn_attention_models.regression_wrappers import RegressorTrainingWrapper
 
 
 def train_models(
@@ -53,7 +47,7 @@ def train_models(
 
     gkf = GroupKFold(n_splits=n_splits)
     for fold_idx, (worm_train_indices, worm_test_indices) in enumerate(gkf.split(dataset, groups=dataset.worm_ids)):
-        print(f"\n=== Fold {fold_idx+1} ===")
+        print(f"\n\n=== Fold {fold_idx+1} ===")
         
         # Instantiate fresh models for each fold
         model_instances = {}
@@ -79,7 +73,7 @@ def train_models(
             measures, _ = model.train_on_fold(train_loader, test_loader)
 
             models_results[model_name][f"fold_{fold_idx}"] = measures
-            print(f"Results for {model_name} fold {fold_idx+1}: {measures}")
+            print(f"Results for {model_name} fold {fold_idx+1}: {measures}\n")
 
     return models_results
 
@@ -127,85 +121,24 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     models_config = {
-        "hmm_64_t": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "hmm_regr_64e_bs16_fel3_ns64_t", 
-
-                "model_type": "hmm",              
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "num_states": 64,
-                "use_time_encoding": True,
-
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                # "device": "cpu",
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "hmm_512_t": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "hmm_regr_64e_bs16_fel3_ns512_t", 
-
-                "model_type": "hmm",              
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "num_states": 512,
-                "use_time_encoding": True,
-
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                # "device": "cpu",
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
-        "bilstm_t": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "bilstm_regr_64e_bs16_fel3_t", 
-
-                "model_type": "bilstm",              
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "use_time_encoding": True,           
-                
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                # "device": "cpu",
-                "device": "cuda:1",
-                "segment_len": 900,
-            }
-        },
         "bilstm_no": {
             "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "bilstm_regr_64e_bs16_fel3_no", 
+                "name": "bilstm_1l_64e_8bs_3fel_notime", 
 
-                "model_type": "bilstm",              
+                "model_type": "bilstm",   
+                "bilstm_layers": 1,          
                 "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 3,
                 "use_time_encoding": False,           
                 
-                "loss": "huber",                
+                "loss": "huber", 
                 "lr": 5e-4,
                 "patience": 25,
                 "epochs": 500,
                 # "device": "cpu",
-                "device": "cuda:1",
+                "device": "cuda",
                 "segment_len": 900,
             }
         },

@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.train_utils.dataset import LPBSDataset
-from models.model_regression import RegressorVisualizationWrapper
+from models.cnn_attention_models.regression_wrappers import RegressorVisualizationWrapper
 from models.model_dummies import DummyVisualizationWrapper
 
 def to_np(v):

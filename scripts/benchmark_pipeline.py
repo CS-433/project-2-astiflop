@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.train_utils.dataset import LPBSDataset
 from torch.utils.data import DataLoader
 
-from models.model_regression import RegressorBenchmarkWrapper
+from models.cnn_attention_models.regression_wrappers import RegressorBenchmarkWrapper
 from models.model_dummies import DummyBenchmarkWrapper
 
 import json
