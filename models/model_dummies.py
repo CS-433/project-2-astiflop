@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 import random
 
-from .wrappers import BenchmarkWrapper
+from .wrappers import BenchmarkWrapper, VisualizationWrapper
 
 class RandomDummyModel(nn.Module):
     def __init__(self):
@@ -80,3 +80,36 @@ class DummyBenchmarkWrapper(BenchmarkWrapper):
             "predictions": all_trajectory_preds,
             "interpretability_score": 0.0
         }
+
+class DummyVisualizationWrapper(VisualizationWrapper):
+    def load(self, path=None):
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        model_type = self.params.get("model_type", "random") # 'random' or 'segment'
+        
+        if model_type == "random":
+            self.model = RandomDummyModel().to(device)
+        elif model_type == "segment":
+            self.model = SegmentDummyModel().to(device)
+        else:
+            raise ValueError(f"Unknown dummy model type: {model_type}")
+        
+        self.model.eval()
+
+    def get_trajectory_predictions(self, data_tensor, total_segments):
+        device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        T_actual = int(total_segments)
+        
+        predictions = []
+        variances = []
+        
+        with torch.no_grad():
+            for t in range(1, T_actual + 1):
+                x_t = data_tensor[:t].unsqueeze(0).to(device)
+                mask = torch.ones(1, t).to(device)
+                
+                out, _, _ = self.model(x_t, mask=mask)
+                pred_val = out.item()
+                predictions.append(pred_val)
+                variances.append(10.0 if pred_val > 45 else 2.0)
+                
+        return predictions, variances, {}
