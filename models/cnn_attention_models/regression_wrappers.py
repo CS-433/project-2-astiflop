@@ -75,7 +75,7 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
 class RegressorTrainingWrapper(TrainingWrapper): 
     def _forward_pass(self, model, batch_data, total_lengths, criterion, comparison_criterion, device, max_segment_number, is_training=True):
         B, T_max, V, L = batch_data.shape
-        batch_data = batch_data.cpu()
+        batch_data = batch_data
         
         # This acts as Ortho Beta for BiLSTM, or NLL Beta for the HMM
         aux_beta = self.params.get("aux_beta", self.params.get("ortho_beta", 0.01))
@@ -89,7 +89,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
         
         for i in range(B):
             T_actual = int(total_lengths[i].item())
-            full_trajectory = batch_data[i] # (T_max, V, L) sur CPU
+            full_trajectory = batch_data[i] # (T_max, V, L) 
             
             if is_training:
                 if T_actual <= num_samples_train:
@@ -106,7 +106,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
                 X_staircase.append(full_trajectory[:t]) 
                 Y_staircase.append(y) 
 
-        X_padded = pad_sequence(X_staircase, batch_first=True).to(device)
+        X_padded = pad_sequence(X_staircase, batch_first=True)
         targets = torch.tensor(Y_staircase, device=device).float()
         
         # Attention mask
