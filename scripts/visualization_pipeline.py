@@ -16,9 +16,9 @@ from utils.train_utils.dataset import LPBSDataset
 from models.cnn_attention_models.regression_wrappers import RegressorVisualizationWrapper
 from models.model_dummies import DummyVisualizationWrapper
 
-def run_models_inference(models_config, pytorch_dir, scaler_config_path, scaler_type="standard", random_idx=None, device="cpu"):
+def load_dataset(pytorch_dir, scaler_config_path, scaler_type="standard", device="cpu"):
     """
-    Run inference on a single common sample for all models in models_config.
+    Load dataset once for caching/efficiency.
     """
     print(f"Loading dataset from {pytorch_dir} on device {device}...")
     dataset = LPBSDataset(
@@ -28,7 +28,28 @@ def run_models_inference(models_config, pytorch_dir, scaler_config_path, scaler_
         scaler_config_path=scaler_config_path,
         device=device
     )
-    
+    return dataset
+
+def load_models(models_config):
+    """
+    Initialize and load all models into memory once.
+    """
+    loaded_models = {}
+    for model_name, config in models_config.items():
+        print(f"Loading model {model_name}...")
+        model_cls = config["model_class"]
+        params = config.get("params", {})
+        ckpt_path = config.get("checkpoint_path")
+        
+        wrapper = model_cls(params)
+        wrapper.load(ckpt_path)
+        loaded_models[model_name] = wrapper
+    return loaded_models
+
+def run_models_inference(dataset, loaded_models, random_idx=None):
+    """
+    Run inference on a single common sample for all pre-loaded models.
+    """
     if random_idx is None:
         random_idx = random.randint(0, len(dataset) - 1)
         
@@ -47,15 +68,8 @@ def run_models_inference(models_config, pytorch_dir, scaler_config_path, scaler_
         true_remaining.append(float(T_actual - t))
         true_objective.append(min(float(T_actual - t), knee_point))
 
-    for model_name, config in models_config.items():
+    for model_name, wrapper in loaded_models.items():
         print(f"Running inference for {model_name}...")
-        model_cls = config["model_class"]
-        params = config.get("params", {})
-        ckpt_path = config.get("checkpoint_path")
-        
-        # Initiate and use the wrapper to get the predictions
-        wrapper = model_cls(params)
-        wrapper.load(ckpt_path)
         preds, vars, custom_data = wrapper.get_trajectory_predictions(data_tensor, T_actual)
 
         results[model_name] = {
@@ -225,7 +239,19 @@ def plot_interactive_results(T_actual, true_objective, true_remaining, data_tens
     update(T_actual)
     slider.on_changed(update)
 
+    state = {"retry": False}
+
+    ax_btn = plt.axes([0.85, 0.05, 0.1, 0.04])
+    btn_retry = Button(ax_btn, 'Next Sample', hovercolor='0.975')
+
+    def on_retry(event):
+        state["retry"] = True
+        plt.close(fig)
+
+    btn_retry.on_clicked(on_retry)
+
     plt.show()
+    return state["retry"]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Interactive visualization pipeline for multiple models.")
@@ -299,13 +325,27 @@ if __name__ == "__main__":
         args.scaler_config_path = "preprocessed_with_lifespan/scaler_config.json"
         args.pytorch_dir = "preprocessed_with_lifespan_test/"
 
-    T_actual, true_objective, true_remaining, data_tensor, results_dict = run_models_inference(
-        models_config=models_config,
+    dataset = load_dataset(
         pytorch_dir=args.pytorch_dir,
         scaler_config_path=args.scaler_config_path,
         scaler_type=args.scaler,
-        random_idx=args.sample_idx,
         device=device
     )
+    
+    loaded_models = load_models(models_config)
 
-    plot_interactive_results(T_actual, true_objective, true_remaining, data_tensor, results_dict)
+    current_sample_idx = args.sample_idx
+    while True:
+        T_actual, true_objective, true_remaining, data_tensor, results_dict = run_models_inference(
+            dataset=dataset,
+            loaded_models=loaded_models,
+            random_idx=current_sample_idx
+        )
+
+        retry = plot_interactive_results(T_actual, true_objective, true_remaining, data_tensor, results_dict)
+        
+        if not retry:
+            break
+        
+        # After the first targeted sample, ensuing retries should be random
+        current_sample_idx = None
