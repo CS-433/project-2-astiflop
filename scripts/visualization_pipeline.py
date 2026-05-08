@@ -16,11 +16,6 @@ from utils.train_utils.dataset import LPBSDataset
 from models.cnn_attention_models.regression_wrappers import RegressorVisualizationWrapper
 from models.model_dummies import DummyVisualizationWrapper
 
-def to_np(v):
-    if hasattr(v, 'numpy'):
-        return v.detach().cpu().numpy()
-    return np.array(v)
-
 def run_models_inference(models_config, pytorch_dir, scaler_config_path, scaler_type="standard", random_idx=None, device="cpu"):
     """
     Run inference on a single common sample for all models in models_config.
@@ -38,7 +33,6 @@ def run_models_inference(models_config, pytorch_dir, scaler_config_path, scaler_
         random_idx = random.randint(0, len(dataset) - 1)
         
     data_tensor, label, total_segments = dataset[random_idx]
-    data_tensor = data_tensor.cpu()
     T_actual = int(total_segments.item())
     
     print(f"Selected sample {random_idx} with {T_actual} valid segments.")
