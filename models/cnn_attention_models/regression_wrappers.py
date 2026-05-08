@@ -1,6 +1,7 @@
 import os
 import time
 import random
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
@@ -17,13 +18,15 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
         feature_extractor_layers = self.params.get("feature_extractor_layers")
         use_time_encoding = self.params.get("use_time_encoding")
         device = self.params.get("device")
+        loss_type = self.params.get("loss")
+        output_type = "gaussian" if loss_type == "nll" else "point"
         
         if model_type == "hmm":
             temporal_params = {"num_states": self.params.get("num_states")}
-            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="hmm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="hmm", temporal_params=temporal_params, use_time_encoding=use_time_encoding, output_type=output_type).to(device)
         else:
             temporal_params = {"bilstm_layers": self.params.get("bilstm_layers")}
-            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="bilstm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="bilstm", temporal_params=temporal_params, use_time_encoding=use_time_encoding, output_type=output_type).to(device)
             
         self.model.load_state_dict(torch.load(path, map_location=device))
         self.model.eval()
@@ -56,12 +59,16 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
                     
                     trajectory_preds, _, _, _ = self.model(X_padded, mask=mask)
                     trajectory_preds = trajectory_preds.cpu().numpy()
+                    
+                    if self.model.output_type == "gaussian":
+                        trajectory_vars_pred = np.exp(trajectory_preds[..., 1])
+                        trajectory_preds = trajectory_preds[..., 0]
+                        trajectory_vars = [v * ((max_segment_number / 3.0)**2) for v in trajectory_vars_pred]
+                    else:
+                        trajectory_vars = [10.0 if pred > 45 else 2.0 for pred in trajectory_preds]
 
                     # Denormalize predictions to true RUL scale (number of segments)
                     trajectory_preds = trajectory_preds * (max_segment_number / 3.0)
-                    
-                    # Variance estimation with heuristic
-                    trajectory_vars = [10.0 if pred > 45 else 2.0 for pred in trajectory_preds]
 
                     all_trajectory_preds.append(trajectory_preds)
                     all_trajectory_vars.append(trajectory_vars)
@@ -116,10 +123,17 @@ class RegressorTrainingWrapper(TrainingWrapper):
 
         # Forward pass
         preds, _, _, aux_loss = model(X_padded, mask=mask)
-        loss = criterion(preds, targets) + aux_beta * aux_loss
+        if model.output_type == "gaussian":
+            mu = preds[..., 0]
+            s = preds[..., 1]
+            loss = criterion(mu, s, targets) + aux_beta * aux_loss
+            y_pred = mu
+        else:
+            loss = criterion(preds, targets) + aux_beta * aux_loss
+            y_pred = preds
         
         if not is_training and comparison_criterion is not None:
-            comparison_loss = comparison_criterion(preds, targets)
+            comparison_loss = comparison_criterion(y_pred, targets)
             return loss, comparison_loss
 
         return loss
@@ -139,16 +153,17 @@ class RegressorTrainingWrapper(TrainingWrapper):
         max_segment_number = 150 
 
         # Unified Instantiation
+        output_type = "gaussian" if loss_type == "nll" else "point"
         if model_type == "hmm":
             num_states = self.params.get("num_states")
             temporal_params = {"num_states": num_states}
-            model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="hmm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+            model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="hmm", temporal_params=temporal_params, use_time_encoding=use_time_encoding, output_type=output_type).to(device)
         else:
             bilstm_layers = self.params.get("bilstm_layers")
             temporal_params = {"bilstm_layers": bilstm_layers}
-            model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="bilstm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+            model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="bilstm", temporal_params=temporal_params, use_time_encoding=use_time_encoding, output_type=output_type).to(device)
         
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)        
         
         if loss_type == "mse":
             criterion = nn.MSELoss()
@@ -156,6 +171,10 @@ class RegressorTrainingWrapper(TrainingWrapper):
             criterion = nn.L1Loss()
         elif loss_type == "huber":
             criterion = nn.SmoothL1Loss()
+        elif loss_type == "nll":
+            criterion = lambda mu, s, target: 0.5 * torch.mean(((target - mu) ** 2) / (torch.exp(s) + 1e-6) + s)
+        else:
+            raise ValueError(f"Unknown loss type: {loss_type}")
 
         best_loss = float('inf')
         comparison_criterion = nn.MSELoss()
@@ -226,15 +245,17 @@ class RegressorVisualizationWrapper(VisualizationWrapper):
         feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
         use_time_encoding = self.params.get("use_time_encoding", True)
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        loss_type = self.params.get("loss", "mse")
+        output_type = "gaussian" if loss_type == "nll" else "point"
         
         if model_type == "hmm":
             num_states = self.params.get("num_states", 16)
             temporal_params = {"num_states": num_states}
-            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="hmm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="hmm", temporal_params=temporal_params, use_time_encoding=use_time_encoding, output_type=output_type).to(device)
         else:
             bilstm_layers = self.params.get("bilstm_layers", 1)
             temporal_params = {"bilstm_layers": bilstm_layers}
-            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="bilstm", temporal_params=temporal_params, use_time_encoding=use_time_encoding).to(device)
+            self.model = CNNAttentionRegressor(segment_len=segment_len, embed_dim=embed_dim, feature_extractor_layers=feature_extractor_layers, temporal_type="bilstm", temporal_params=temporal_params, use_time_encoding=use_time_encoding, output_type=output_type).to(device)
             
         if path and os.path.exists(path):
             self.model.load_state_dict(torch.load(path, map_location=device))
@@ -266,10 +287,15 @@ class RegressorVisualizationWrapper(VisualizationWrapper):
                     v_weights = torch.zeros(1, t, 3)
                 
                 # Denormalize
-                pred_val = output.item() * (max_segment_number / 3.0)
-                predictions.append(pred_val)
-                # Heuristic variance as seen in benchmark
-                variances.append(10.0 if pred_val > 45 else 2.0)
+                if self.model.output_type == "gaussian":
+                    pred_val = output[0, 0].item() * (max_segment_number / 3.0)
+                    predictions.append(pred_val)
+                    var_val = np.exp(output[0, 1].item()) * ((max_segment_number / 3.0)**2)
+                    variances.append(var_val)
+                else:
+                    pred_val = output.item() * (max_segment_number / 3.0)
+                    predictions.append(pred_val)
+                    variances.append(10.0 if pred_val > 45 else 2.0)
                 
                 s_weights_all.append(s_weights.squeeze().cpu().numpy())
                 v_weights_all.append(v_weights.squeeze().cpu().numpy())

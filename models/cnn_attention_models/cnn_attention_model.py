@@ -8,11 +8,12 @@ from models.building_blocs.hmm_temporal import HMMTemporal
 
 
 class CNNAttentionRegressor(nn.Module):
-    def __init__(self, segment_len, embed_dim=512, dropout=0.3, feature_extractor_layers=1, temporal_type="bilstm", temporal_params=None, use_time_encoding=True):
+    def __init__(self, segment_len, embed_dim=512, dropout=0.3, feature_extractor_layers=1, temporal_type="bilstm", temporal_params=None, use_time_encoding=True, output_type="point"):
         super().__init__()
         self.embed_dim = embed_dim
         self.feature_extractor_layers = feature_extractor_layers
         self.temporal_type = temporal_type
+        self.output_type = output_type
         
         temporal_params = temporal_params or {}
         
@@ -52,9 +53,14 @@ class CNNAttentionRegressor(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(temporal_out_dim, temporal_out_dim//2),
             nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(temporal_out_dim//2, 1)
+            nn.Dropout(dropout)
         )
+        if self.output_type == "point":
+            self.output_layer = nn.Linear(temporal_out_dim//2, 1)
+        elif self.output_type == "gaussian":
+            self.output_layer = nn.Linear(temporal_out_dim//2, 2)
+        else:
+            raise ValueError(f"Unknown output type: {self.output_type}")
 
     def forward(self, x, mask=None):
         B, T, V, L = x.shape
@@ -91,6 +97,7 @@ class CNNAttentionRegressor(nn.Module):
         context_vector = torch.sum(temporal_out * s_weights, dim=1) 
           
         # --- Final Regression ---
-        output = self.regressor(context_vector).squeeze(-1) 
+        reg_features = self.regressor(context_vector)
+        output = self.output_layer(reg_features).squeeze(-1)
         
         return output, s_weights, v_weights, aux_loss
