@@ -77,17 +77,18 @@ def plot_interactive_results(T_actual, true_objective, true_remaining, data_tens
     y_max_val = np.max(true_remaining) * 1.1
     for m_res in results_dict.values():
         preds = m_res['predictions']
+        vars_ = m_res['variances']
+        stds = np.sqrt(np.maximum(0, vars_))
         max_predicted_total = max(max_predicted_total, np.max(steps + preds))
-        y_max_val = max(y_max_val, np.max(preds) * 1.1)
+        y_max_val = max(y_max_val, np.max(preds + stds) * 1.1)
         
     max_true_total = np.max(steps + true_remaining)
     plot1_xlim = max(1.5 * T_actual, max_predicted_total, max_true_total)
 
     # Set up figure
-    fig, axs = plt.subplots(2, 2, figsize=(16, 10))
-    plt.subplots_adjust(bottom=0.15, hspace=0.3, wspace=0.2)
-    ax1, ax2 = axs[0]
-    ax3, ax4 = axs[1]
+    fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+    plt.subplots_adjust(bottom=0.20, wspace=0.2)
+    ax1, ax2 = axs
 
     # PLOT 1: Timeline
     line_true, = ax1.plot([], [], label="True Remaining", linestyle="--", marker="o", markersize=4, color="blue", alpha=0.7)
@@ -98,9 +99,9 @@ def plot_interactive_results(T_actual, true_objective, true_remaining, data_tens
     
     for idx, (model_name, m_res) in enumerate(results_dict.items()):
         color = colors[idx]
-        line, = ax1.plot([], [], label=f"{model_name} Pred", color=color, marker="x", markersize=4)
+        line, = ax1.plot([], [], label=f"{model_name} predictions", color=color, marker="x", markersize=4)
         vline = ax1.axvline(x=-1, color=color, linestyle='--', alpha=0.6)
-        model_lines[model_name] = {'line': line, 'vline': vline, 'color': color}
+        model_lines[model_name] = {'line': line, 'vline': vline, 'color': color, 'fill': None}
 
     ax1.set_xlim(0, plot1_xlim)
     ax1.set_ylim(0, y_max_val)
@@ -169,11 +170,6 @@ def plot_interactive_results(T_actual, true_objective, true_remaining, data_tens
     txt_elapsed = ax_lifetime.text(0.0, 0.5, '', transform=ax_lifetime.transAxes, ha='left', va='center', fontsize=10)
     txt_remaining = ax_lifetime.text(1.0, 0.5, '', transform=ax_lifetime.transAxes, ha='right', va='center', fontsize=10)
 
-    first_model_name = list(results_dict.keys())[0]
-    ax3.set_title(f"Attention (showing {first_model_name})")
-    ax4.text(0.5, 0.5, "Can be customized for additional info", ha='center', va='center', fontsize=14, color='gray')
-    ax4.axis('off')
-
     def update(val):
         t = int(slider.val)
         current_idx = t - 1
@@ -187,10 +183,27 @@ def plot_interactive_results(T_actual, true_objective, true_remaining, data_tens
 
         for model_name, m_res in results_dict.items():
             preds = m_res['predictions']
+            vars_ = m_res['variances']
+            stds = np.sqrt(np.maximum(0, vars_))
+            
             m_lines = model_lines[model_name]
             m_lines['line'].set_data(steps[:t], preds[:t])
             current_pred_total = t + preds[current_idx]
             m_lines['vline'].set_xdata([current_pred_total, current_pred_total])
+            
+            if m_lines['fill'] is not None:
+                m_lines['fill'].remove()
+                m_lines['fill'] = None
+                
+            if np.any(stds > 1e-4):
+                m_lines['fill'] = ax1.fill_between(
+                    steps[:t], 
+                    preds[:t] - stds[:t], 
+                    preds[:t] + stds[:t], 
+                    color=m_lines['color'], 
+                    alpha=0.2,
+                    linewidth=0
+                )
         
         # Update Trajectories
         for i in range(T_actual):
@@ -217,7 +230,7 @@ def plot_interactive_results(T_actual, true_objective, true_remaining, data_tens
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Interactive visualization pipeline for multiple models.")
     parser.add_argument("--pytorch_dir", "-d", type=str, default="preprocessed_with_lifespan_test/", help="Path to PyTorch preprocessed data directory")
-    parser.add_argument("--scaler_config_path", "-c", type=str, default="../preprocessed_with_lifespan/scaler_config.json", help="Path to the scaler config JSON file")
+    parser.add_argument("--scaler_config_path", "-c", type=str, default="preprocessed_with_lifespan/scaler_config.json", help="Path to the scaler config JSON file")
     parser.add_argument("--scaler", "-s", type=str, default="standard", help="Scaler type: 'none', 'minmax', 'standard'")
     parser.add_argument("--sample_idx", type=int, default=None, help="Explicit dataset index to visualize.")
     args = parser.parse_args()
@@ -227,20 +240,49 @@ if __name__ == "__main__":
 
     # Define models to visualize
     models_config = {
-        "regr_64e_3_1_5e4": {
+        "bilstm_yes": {
             "model_class": RegressorVisualizationWrapper,
-            "checkpoint_path": "ckpts/layers/best_regr_64e_bs16_3_1_13-56.pth",
+            "checkpoint_path": "ckpts/gaussian/best_bilstm_1l_64e_8bs_3fel_wtime_18-49.pth",
             "params": {
-                "name": "regr_64e_bs16_3_1",
+                "name": "bilstm_1l_64e_8bs_3fel_wtime", 
+
+                "model_type": "bilstm",   
+                "bilstm_layers": 1,          
                 "embed_dim": 64,
-                "feature_extractor_layers": 3,
-                "bilstm_layers": 1,
                 "batch_size": 16,
-                "loss": "huber",                
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,           
+                
+                "loss": "huber", 
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
                 "device": device,
                 "segment_len": 900,
             }
         },
+        "bilstm_gaussian_yes": {
+            "model_class": RegressorVisualizationWrapper,
+            "checkpoint_path": "ckpts/gaussian/best_bilstm_1l_64e_8bs_3fel_wtime_gaussian_18-57.pth",
+            "params": {
+                "name": "bilstm_1l_64e_8bs_3fel_wtime_gaussian", 
+
+                "model_type": "bilstm",   
+                "bilstm_layers": 1,          
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,           
+                
+                "loss": "nll", 
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            }
+        },
+
         "dummy_segment": {
             "model_class": DummyVisualizationWrapper,
             "checkpoint_path": None,
