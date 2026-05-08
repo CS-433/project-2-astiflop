@@ -63,9 +63,9 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
                     if self.model.output_type == "gaussian":
                         trajectory_vars_pred = np.exp(trajectory_preds[..., 1])
                         trajectory_preds = trajectory_preds[..., 0]
-                        trajectory_vars = [v * ((max_segment_number / 3.0)**2) for v in trajectory_vars_pred]
+                        trajectory_vars = trajectory_vars_pred * ((max_segment_number / 3.0) ** 2)
                     else:
-                        trajectory_vars = [10.0 if pred > 45 else 2.0 for pred in trajectory_preds]
+                        trajectory_vars = np.where(trajectory_preds > 45, 10.0, 2.0)
 
                     # Denormalize predictions to true RUL scale (number of segments)
                     trajectory_preds = trajectory_preds * (max_segment_number / 3.0)

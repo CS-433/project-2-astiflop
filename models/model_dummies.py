@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 import random
+import numpy as np
 
 from .wrappers import BenchmarkWrapper, VisualizationWrapper
 
@@ -50,6 +51,7 @@ class DummyBenchmarkWrapper(BenchmarkWrapper):
         device = self.params.get("device", "cuda" if torch.cuda.is_available() else "cpu")
         
         all_trajectory_preds = []
+        all_trajectory_variances = []
         
         with torch.no_grad():
             for X, _, total_segment_len in test_loader:
@@ -73,11 +75,12 @@ class DummyBenchmarkWrapper(BenchmarkWrapper):
                     trajectory_preds, _, _ = self.model(X_padded, mask=mask)
                     trajectory_preds = trajectory_preds.cpu().numpy()
                     
-                    # No denormalization needed; output is already in desired format
+                    all_trajectory_variances.append(np.ones_like(trajectory_preds)*2.0)
                     all_trajectory_preds.append(trajectory_preds)
                     
         return {
             "predictions": all_trajectory_preds,
+            "variances": all_trajectory_variances,
             "interpretability_score": 0.0
         }
 

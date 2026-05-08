@@ -66,8 +66,8 @@ class VisualizationWrapper(ABC):
             total_segments: The number of valid segments (T_actual).
             
         Returns:
-            predictions (list or array): List of predicted remaining lifetime for each step t=1..T_actual.
-            variances (list or array): List of variances for each prediction.
+            predictions (list of numpy arrays): List of predicted remaining lifetime for each step t=1..T_actual.
+            variances (list or numpy arrays): List of variances for each prediction.
             custom_data (dict): A dictionary with model-specific data (e.g. 's_weights', 'v_weights' for attention).
         """
         pass
