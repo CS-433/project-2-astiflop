@@ -235,7 +235,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
             torch.save(model.state_dict(), f"ckpts/best_{name}_{datetime_str}.pth")
             print(f"Best model saved with comparison loss: {best_comparison_loss:.4f} at time {datetime_str}")
 
-        return {"best_loss": best_loss, "comparison_loss": best_comparison_loss}, model
+        return {"best_loss": best_loss, "mse_validation": best_comparison_loss}, model
 
 class RegressorVisualizationWrapper(VisualizationWrapper):
     def load(self, path):
