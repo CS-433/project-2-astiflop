@@ -53,13 +53,9 @@ def run_models_inference(models_config, pytorch_dir, scaler_config_path, scaler_
         params = config.get("params", {})
         ckpt_path = config.get("checkpoint_path")
         
-        # We need the inner model to extract step-by-step logic and attention
+        # Initiate and use the wrapper to get the predictions
         wrapper = model_cls(params)
-        if ckpt_path and os.path.exists(ckpt_path):
-            wrapper.load(ckpt_path)
-        else:
-            print(f"Warning: Checkpoint {ckpt_path} not found for {model_name}. Using uninitialized weights.")
-        
+        wrapper.load(ckpt_path)
         preds, vars, custom_data = wrapper.get_trajectory_predictions(data_tensor, T_actual)
 
         results[model_name] = {
@@ -68,7 +64,7 @@ def run_models_inference(models_config, pytorch_dir, scaler_config_path, scaler_
             'custom_data': custom_data
         }
 
-    return T_actual, np.array(true_objective), np.array(true_remaining), data_tensor.numpy(), results
+    return T_actual, np.array(true_objective), np.array(true_remaining), data_tensor.detach().cpu().numpy(), results
 
 def plot_interactive_results(T_actual, true_objective, true_remaining, data_tensor, results_dict):
     """
