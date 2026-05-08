@@ -2,6 +2,8 @@ import argparse
 import os
 import sys
 
+import torch
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.train_utils.dataset import LPBSDataset
 from torch.utils.data import DataLoader
@@ -14,9 +16,18 @@ import numpy as np
 from scipy.stats import norm
 
 def compute_mae(preds, targets, vars):
+    """
+    Classic Mean Absolute Error (MAE) between predictions and targets.
+    """
     return np.mean(np.abs(preds - targets))
 
 def compute_tier_mae(preds, targets, vars, tier=1):
+    """
+    Compute MAE for a specific tier of the trajectory:
+    - Tier 1: Early (first third)
+    - Tier 2: Middle (second third)
+    - Tier 3: Late (last third)
+    """
     T_actual = len(preds)
     tier_size = T_actual // 3
     if tier_size == 0:
@@ -32,6 +43,11 @@ def compute_tier_mae(preds, targets, vars, tier=1):
     return np.mean(np.abs(preds[start_idx:end_idx] - targets[start_idx:end_idx]))
 
 def compute_stability(preds, targets, vars, last_k=20):
+    """
+    Compute the variance of the prediction errors in the last k segments to assess stability.
+    - Lower -> More stable predictions in the final part of the trajectory.
+    - Higher -> More volatile predictions near the end.
+    """
     T_actual = len(preds)
     k = min(last_k, T_actual)
     if k > 1:
@@ -40,10 +56,25 @@ def compute_stability(preds, targets, vars, last_k=20):
     return 0.0
 
 def compute_nasa_loss(preds, targets, vars):
+    """
+    Custom NASA-inspired loss that penalizes early and late errors differently.
+    - Early errors (pred < target) are penalized with an exponential decay.
+    - Late errors (pred > target) are penalized with an exponential growth.
+    """
     d = preds - targets  # Now predictions and targets are in actual segments
     return np.sum(np.where(d < 0, np.exp(-d/13.0) - 1, np.exp(d/10.0) - 1))
 
 def compute_earlyness(preds, targets, vars, epsilon_m=5.0, epsilon_v=25.0, window_size=5):
+    """
+    Compute the earlyness factor, which measures how early in the trajectory the model's predictions become stable and accurate.
+    - The model is considered to have "converged" at time t if:
+        1. The MAE of predictions up to time t is less than epsilon_m.
+        2. The variance of the prediction errors in a window of size `window_size` before time t is less than epsilon_v.
+    - The earlyness factor is then defined as (T_actual - t_converged)
+
+    Higher is better.
+    """
+
     T_actual = len(preds)
     earlyness = 0
     for t in range(1, T_actual):
@@ -58,6 +89,9 @@ def compute_earlyness(preds, targets, vars, epsilon_m=5.0, epsilon_v=25.0, windo
 
 
 def compute_nll(preds, targets, variances):
+    """
+    Compute the Negative Log-Likelihood (NLL) of the predictions assuming a Gaussian distribution.
+    """
     if variances is None or np.all(variances == 0): return np.nan
     # NLL for Gaussian: 0.5*log(2*pi*var) + (target-pred)^2 / (2*var)
     eps = 1e-6
@@ -65,6 +99,13 @@ def compute_nll(preds, targets, variances):
     return np.mean(nll)
 
 def compute_crps(preds, targets, variances):
+    """
+    Compute the Continuous Ranked Probability Score (CRPS) for Gaussian predictions.
+    - CRPS is a proper scoring rule that evaluates the quality of probabilistic forecasts (taking account of the uncertainty in the predictions).
+    
+    Lower CRPS is better, with 0 being a perfect score.
+    """
+
     if variances is None or np.all(variances == 0): return np.mean(np.abs(preds - targets))
     # CRPS for Normal Distribution
     sig = np.sqrt(variances + 1e-6)
@@ -73,6 +114,12 @@ def compute_crps(preds, targets, variances):
     return np.mean(crps)
 
 def compute_coverage(preds, targets, variances, confidence=0.95):
+    """
+    Compute the Prediction Interval Coverage Probability (PICP).
+    - Measures the percentage of true targets that fall within the predicted confidence intervals.
+
+    Higher is better, with 1.0 being perfect coverage.
+    """
     if variances is None: return np.nan
     # PICP: Prediction Interval Coverage Probability
     z = norm.ppf(1 - (1 - confidence) / 2)
@@ -82,6 +129,12 @@ def compute_coverage(preds, targets, variances, confidence=0.95):
     return np.mean(covered)
 
 def compute_sharpness(preds, targets, variances):
+    """   
+    Compute the sharpness of the predictive distribution, which is related to the width of the prediction intervals.
+
+    Lower is better, but only if coverage is also good.
+    """
+
     if variances is None: return np.nan
     # MPIW: Mean Prediction Interval Width
     return np.mean(2 * 1.96 * np.sqrt(variances))
@@ -154,10 +207,10 @@ def benchmark_models(
                     measures[metric_name] += metric_func(preds, targets, vars)
                     
             for metric_name in measures.keys():
-                measures[metric_name] /= num_samples
+                measures[metric_name] = float(measures[metric_name] / num_samples)
 
         if "interpretability_score" in raw_results:
-            measures["Interpretability"] = raw_results["interpretability_score"]
+            measures["Interpretability"] = float(raw_results["interpretability_score"])
             
         models_results[model_name] = measures
 
@@ -195,13 +248,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     models_config = {
         "dummy_random": {
             "model_class": DummyBenchmarkWrapper,
             "checkpoint_path": None,
             "params": {
                 "model_type": "random",
-                "device": "cuda"
+                "device": device,
             }
         },
         "dummy_segment": {
@@ -209,125 +263,49 @@ if __name__ == "__main__":
             "checkpoint_path": None,
             "params": {
                 "model_type": "segment",
-                "device": "cuda"
+                "device": device,
             }
         },
-        "regr_64e_1_1_5e4": {
+        
+        "bilstm_yes": {
             "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/layers/best_regr_64e_bs16_1_1_13-42.pth",
+            "checkpoint_path": "ckpts/gaussian/best_bilstm_1l_64e_8bs_3fel_wtime_18-49.pth",
             "params": {
-                "name": "regr_64e_bs16_1_1",
-                
-                "embed_dim": 64,
-                "feature_extractor_layers": 1,
-                "bilstm_layers": 1,
+                "name": "bilstm_1l_64e_8bs_3fel_wtime", 
 
-                "batch_size": 16,
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda",
-                "segment_len": 900,
-            }
-        },
-
-        "regr_64e_3_1_5e4": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/layers/best_regr_64e_bs16_3_1_13-56.pth",
-            "params": {
-                "name": "regr_64e_bs16_3_1",
-                
-                "embed_dim": 64,
-                "feature_extractor_layers": 3,
-                "bilstm_layers": 1,
-
-                "batch_size": 16,
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda",
-                "segment_len": 900,
-            }
-        },
-
-        "regr_64e_1_3_5e4": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/layers/best_regr_64e_bs16_1_3_14-06.pth",
-            "params": {
-                "name": "regr_64e_bs16_1_3",
-                
-                "embed_dim": 64,
-                "feature_extractor_layers": 1,
-                "bilstm_layers": 3,
-
-                "batch_size": 16,
-                "loss": "huber",                
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda",
-                "segment_len": 900,
-            }
-        },
-
-        "regr_64e_3_3_5e4": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/layers/best_regr_64e_bs16_3_3_15-09.pth",
-            "params": {
-                "name": "regr_64e_bs16_3_3",
-                
+                "model_type": "bilstm",   
+                "bilstm_layers": 1,          
                 "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 3,
-                "bilstm_layers": 3,
-
-                "loss": "huber",                
+                "use_time_encoding": True,           
+                
+                "loss": "huber", 
                 "lr": 5e-4,
                 "patience": 25,
                 "epochs": 500,
-                "device": "cuda",
+                "device": device,
                 "segment_len": 900,
             }
         },
-
-        "regr_128e_3_3_5e4": {
+        "bilstm_gaussian_yes": {
             "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/layers/best_regr_128e_bs16_3_3_15-29.pth",
+            "checkpoint_path": "ckpts/gaussian/best_bilstm_1l_64e_8bs_3fel_wtime_gaussian_18-57.pth",
             "params": {
-                "name": "regr_128e_bs16_3_3",
-                
-                "embed_dim": 128,
+                "name": "bilstm_1l_64e_8bs_3fel_wtime_gaussian", 
+
+                "model_type": "bilstm",   
+                "bilstm_layers": 1,          
+                "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 3,
-                "bilstm_layers": 3,
-
-                "loss": "huber",                
+                "use_time_encoding": True,           
+                
+                "loss": "nll", 
                 "lr": 5e-4,
                 "patience": 25,
                 "epochs": 500,
-                "device": "cuda",
-                "segment_len": 900,
-            }
-        },
-
-        "regr_128e_3_3_1e3": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/layers/best_regr_128e_bs16_3_3_1e3_15-42.pth",
-            "params": {
-                "name": "regr_128e_bs16_3_3_1e3",
-                
-                "embed_dim": 128,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "bilstm_layers": 3,
-
-                "loss": "huber",                
-                "lr": 1e-3,
-                "patience": 25,
-                "epochs": 500,
-                "device": "cuda",
+                "device": device,
                 "segment_len": 900,
             }
         },
