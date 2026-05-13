@@ -123,7 +123,7 @@ if __name__ == "__main__":
         "bilstm_yes": {
             "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "bilstm_1l_64e_12bs_3fel_notime",
+                "name": "bilstm_1l_64e_12bs_3fel_time",
                 "model_type": "bilstm",
                 "bilstm_layers": 1,
                 "embed_dim": 64,
