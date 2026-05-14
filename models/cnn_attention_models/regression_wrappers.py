@@ -435,6 +435,26 @@ class RegressorVisualizationWrapper(VisualizationWrapper):
                 use_time_encoding=use_time_encoding,
                 output_type=output_type,
             ).to(device)
+        elif model_type == "tcn":
+            kernel_size = self.params.get("kernel_size", 3)
+            num_levels = self.params.get("num_levels", 6)
+            tcn_dropout = self.params.get("dropout", 0.3)
+            dropout_1d = self.params.get("dropout_1d", False)
+            temporal_params = {
+                "kernel_size": kernel_size,
+                "num_levels": num_levels,
+                "dropout": tcn_dropout,
+                "dropout_1d": dropout_1d,
+            }
+            self.model = CNNAttentionRegressor(
+                segment_len=segment_len,
+                embed_dim=embed_dim,
+                feature_extractor_layers=feature_extractor_layers,
+                temporal_type="tcn",
+                temporal_params=temporal_params,
+                use_time_encoding=use_time_encoding,
+                output_type=output_type,
+            ).to(device)
         else:
             bilstm_layers = self.params.get("bilstm_layers", 1)
             temporal_params = {"bilstm_layers": bilstm_layers}
