@@ -1,6 +1,8 @@
 import argparse
+import glob
 import os
 import sys
+import shutil
 
 import torch
 
@@ -233,11 +235,11 @@ if __name__ == "__main__":
         help="Path to the scaler config JSON file",
     )
     parser.add_argument(
-        "--output_json",
+        "--output_dir",
         "-o",
         type=str,
-        default="benchmark_results.json",
-        help="Output JSON file for benchmark results",
+        default="benchmark_results",
+        help="Output directory for benchmark results",
     )
     parser.add_argument(
         "--scaler",
@@ -248,7 +250,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    def get_latest_ckpt(name_pattern):
+        files = glob.glob(f"ckpts/best_{name_pattern}_*.pth")
+        if not files: return None
+        return max(files, key=os.path.getctime)
+
+    device = "cuda:1" if torch.cuda.is_available() else "cpu"
     models_config = {
         "dummy_random": {
             "model_class": DummyBenchmarkWrapper,
@@ -318,10 +325,20 @@ if __name__ == "__main__":
         scaler=args.scaler
     )
 
-    with open(args.output_json, "w") as f:
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    output_json_path = os.path.join(args.output_dir, "results.json")
+    with open(output_json_path, "w") as f:
         json.dump(results, f, indent=4)
         
-    print(f"\nSaved benchmark results to {args.output_json}")
+    print(f"\nSaved benchmark results to {output_json_path}")
+    
+    print(f"\nMoving used checkpoints to {args.output_dir}...")
+    for model_name, config in models_config.items():
+        ckpt_path = config.get("checkpoint_path")
+        if ckpt_path and os.path.exists(ckpt_path):
+            shutil.move(ckpt_path, args.output_dir)
+            print(f"Moved {ckpt_path}")
     
     # --- Pretty Print ---
     print("\n" + "="*80)
