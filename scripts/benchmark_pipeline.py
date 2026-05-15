@@ -1,6 +1,8 @@
 import argparse
+import glob
 import os
 import sys
+import shutil
 
 import torch
 
@@ -233,11 +235,11 @@ if __name__ == "__main__":
         help="Path to the scaler config JSON file",
     )
     parser.add_argument(
-        "--output_json",
+        "--output_dir",
         "-o",
         type=str,
-        default="benchmark_results.json",
-        help="Output JSON file for benchmark results",
+        default="benchmark_results",
+        help="Output directory for benchmark results",
     )
     parser.add_argument(
         "--scaler",
@@ -248,7 +250,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    def get_latest_ckpt(name_pattern):
+        files = glob.glob(f"ckpts/best_{name_pattern}_*.pth")
+        if not files: return None
+        return max(files, key=os.path.getctime)
+
+    device = "cuda:1" if torch.cuda.is_available() else "cpu"
     models_config = {
         "dummy_random": {
             "model_class": DummyBenchmarkWrapper,
@@ -266,45 +273,127 @@ if __name__ == "__main__":
                 "device": device,
             }
         },
-        
         "bilstm_yes": {
             "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/gaussian/best_bilstm_1l_64e_8bs_3fel_wtime_18-49.pth",
+            "checkpoint_path": get_latest_ckpt("bilstm_1l_64e_12bs_3fel_time"),
             "params": {
-                "name": "bilstm_1l_64e_8bs_3fel_wtime", 
-
-                "model_type": "bilstm",   
-                "bilstm_layers": 1,          
+                "name": "bilstm_1l_64e_12bs_3fel_time",
+                "model_type": "bilstm",
+                "bilstm_layers": 1,
                 "embed_dim": 64,
-                "batch_size": 16,
+                "batch_size": 12,
                 "feature_extractor_layers": 3,
-                "use_time_encoding": True,           
-                
-                "loss": "huber", 
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
+                "use_time_encoding": True,
+                "loss": "huber",
                 "device": device,
                 "segment_len": 900,
             }
         },
-        "bilstm_gaussian_yes": {
+        "gaussian_yes": {
             "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": "ckpts/gaussian/best_bilstm_1l_64e_8bs_3fel_wtime_gaussian_18-57.pth",
+            "checkpoint_path": get_latest_ckpt("gaussian_1l_64e_12bs_3fel_time"),
             "params": {
-                "name": "bilstm_1l_64e_8bs_3fel_wtime_gaussian", 
-
-                "model_type": "bilstm",   
-                "bilstm_layers": 1,          
+                "name": "gaussian_1l_64e_12bs_3fel_time",
+                "model_type": "gaussian",
+                "bilstm_layers": 1,
+                "embed_dim": 64,
+                "batch_size": 12,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "loss": "nll",
+                "device": device,
+                "segment_len": 900,
+            }
+        },
+        "tcn_do-15": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": get_latest_ckpt("tcn_3ks_5lvl_64e_16bs_3fel_time_do-15"),
+            "params": {
+                "name": "tcn_3ks_5lvl_64e_16bs_3fel_time_do-15",
+                "model_type": "tcn",
+                "tcn_kernel_size": 3,
+                "tcn_num_levels": 5,
+                "tcn_dropout": 0.15,
+                "tcn_dropout_1d": False,
                 "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 3,
-                "use_time_encoding": True,           
-                
-                "loss": "nll", 
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
+                "use_time_encoding": True,
+                "loss": "weibull",
+                "device": device,
+                "segment_len": 900,
+            }
+        },
+        "tcn_do-15_5ks": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": get_latest_ckpt("tcn_5ks_5lvl_64e_16bs_3fel_time_do-15"),
+            "params": {
+                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15",
+                "model_type": "tcn",
+                "tcn_kernel_size": 5,
+                "tcn_num_levels": 5,
+                "tcn_dropout": 0.15,
+                "tcn_dropout_1d": False,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "loss": "weibull",
+                "device": device,
+                "segment_len": 900,
+            }
+        },
+        "tcn_do-15_7ks": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": get_latest_ckpt("tcn_7ks_5lvl_64e_16bs_3fel_time_do-15"),
+            "params": {
+                "name": "tcn_7ks_5lvl_64e_16bs_3fel_time_do-15",
+                "model_type": "tcn",
+                "tcn_kernel_size": 7,
+                "tcn_num_levels": 5,
+                "tcn_dropout": 0.15,
+                "tcn_dropout_1d": False,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "loss": "weibull",
+                "device": device,
+                "segment_len": 900,
+            }
+        },
+        "tcn_5ks_5fel": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": get_latest_ckpt("tcn_5ks_5lvl_64e_16bs_5fel_time"),
+            "params": {
+                "name": "tcn_5ks_5lvl_64e_16bs_5fel_time",
+                "model_type": "tcn",
+                "tcn_kernel_size": 5,
+                "tcn_num_levels": 5,
+                "tcn_dropout_1d": False,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 5,
+                "use_time_encoding": True,
+                "loss": "weibull",
+                "device": device,
+                "segment_len": 900,
+            }
+        },
+        "tcn_5ks_e96": {
+            "model_class": RegressorBenchmarkWrapper,
+            "checkpoint_path": get_latest_ckpt("tcn_5ks_5lvl_96e_16bs_3fel_time"),
+            "params": {
+                "name": "tcn_5ks_5lvl_96e_16bs_3fel_time",
+                "model_type": "tcn",
+                "tcn_kernel_size": 5,
+                "tcn_num_levels": 5,
+                "tcn_dropout_1d": False,
+                "embed_dim": 96,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "loss": "weibull",
                 "device": device,
                 "segment_len": 900,
             }
@@ -318,10 +407,20 @@ if __name__ == "__main__":
         scaler=args.scaler
     )
 
-    with open(args.output_json, "w") as f:
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    output_json_path = os.path.join(args.output_dir, "results.json")
+    with open(output_json_path, "w") as f:
         json.dump(results, f, indent=4)
         
-    print(f"\nSaved benchmark results to {args.output_json}")
+    print(f"\nSaved benchmark results to {output_json_path}")
+    
+    print(f"\nMoving used checkpoints to {args.output_dir}...")
+    for model_name, config in models_config.items():
+        ckpt_path = config.get("checkpoint_path")
+        if ckpt_path and os.path.exists(ckpt_path):
+            shutil.move(ckpt_path, args.output_dir)
+            print(f"Moved {ckpt_path}")
     
     # --- Pretty Print ---
     print("\n" + "="*80)
