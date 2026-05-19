@@ -329,15 +329,18 @@ class RegressorTrainingWrapper(TrainingWrapper):
     def train_on_fold(self, training_loader, validation_loader):
         model_type = self.params.get("model_type")
         name = self.params.get("name")
+
         lr = self.params.get("lr")
-        embed_dim = self.params.get("embed_dim")
         epochs = self.params.get("epochs")
         patience = self.params.get("patience")
-        segment_len = self.params.get("segment_len")
+        device = self.params.get("device")
+        
         loss_type = self.params.get("loss")
+        embed_dim = self.params.get("embed_dim")
+        segment_len = self.params.get("segment_len")
         feature_extractor_layers = self.params.get("feature_extractor_layers")
         use_time_encoding = self.params.get("use_time_encoding")
-        device = self.params.get("device")
+        dropout = self.params.get("dropout")
         max_segment_number = 150
 
         # Unified Instantiation
@@ -348,6 +351,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
             model = CNNAttentionRegressor(
                 segment_len=segment_len,
                 embed_dim=embed_dim,
+                dropout=dropout,
                 feature_extractor_layers=feature_extractor_layers,
                 temporal_type="hmm",
                 temporal_params=temporal_params,
@@ -368,6 +372,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
             model = CNNAttentionRegressor(
                 segment_len=segment_len,
                 embed_dim=embed_dim,
+                dropout=dropout,
                 feature_extractor_layers=feature_extractor_layers,
                 temporal_type="tcn",
                 temporal_params=temporal_params,
@@ -380,6 +385,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
             model = CNNAttentionRegressor(
                 segment_len=segment_len,
                 embed_dim=embed_dim,
+                dropout=dropout,
                 feature_extractor_layers=feature_extractor_layers,
                 temporal_type="bilstm",
                 temporal_params=temporal_params,

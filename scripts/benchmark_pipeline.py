@@ -166,7 +166,7 @@ def benchmark_models(
     
     # Assuming device is defined similarly across configs
     first_model_config = next(iter(models_config.values()))
-    device = first_model_config["params"].get("device", "cpu")
+    device = first_model_config["params"].get("device")
     print(f"Loading test dataset on device {device}.")
     
     # Normally mode="test" if dataset supports it, or use subset. We'll load the full set here or what's needed.
@@ -255,150 +255,154 @@ if __name__ == "__main__":
         if not files: return None
         return max(files, key=os.path.getctime)
 
-    device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    device = "cuda:1"
     models_config = {
-        "dummy_random": {
-            "model_class": DummyBenchmarkWrapper,
-            "checkpoint_path": None,
+        "weibull_dropout0": {
+            "model_class": RegressorTrainingWrapper,
             "params": {
-                "model_type": "random",
-                "device": device,
-            }
-        },
-        "dummy_segment": {
-            "model_class": DummyBenchmarkWrapper,
-            "checkpoint_path": None,
-            "params": {
-                "model_type": "segment",
-                "device": device,
-            }
-        },
-        "bilstm_yes": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": get_latest_ckpt("bilstm_1l_64e_12bs_3fel_time"),
-            "params": {
-                "name": "bilstm_1l_64e_12bs_3fel_time",
+                "name": "biltsm_1l_64e_16bs_3fel_time_do0",
                 "model_type": "bilstm",
                 "bilstm_layers": 1,
+                "dropout": 0.15,
+                "dropout_1d": False,
                 "embed_dim": 64,
-                "batch_size": 12,
+                "dropout": 0.0,
+                "batch_size": 16,
                 "feature_extractor_layers": 3,
                 "use_time_encoding": True,
-                "loss": "huber",
+                "loss": "weibull",
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
                 "device": device,
                 "segment_len": 900,
-            }
+            },
         },
-        "gaussian_yes": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": get_latest_ckpt("gaussian_1l_64e_12bs_3fel_time"),
+        "weibull_dropout15": {
+            "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "gaussian_1l_64e_12bs_3fel_time",
-                "model_type": "gaussian",
+                "name": "biltsm_1l_64e_16bs_3fel_time_do15",
+                "model_type": "bilstm",
                 "bilstm_layers": 1,
-                "embed_dim": 64,
-                "batch_size": 12,
-                "feature_extractor_layers": 3,
-                "use_time_encoding": True,
-                "loss": "nll",
-                "device": device,
-                "segment_len": 900,
-            }
-        },
-        "tcn_do-15": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": get_latest_ckpt("tcn_3ks_5lvl_64e_16bs_3fel_time_do-15"),
-            "params": {
-                "name": "tcn_3ks_5lvl_64e_16bs_3fel_time_do-15",
-                "model_type": "tcn",
-                "tcn_kernel_size": 3,
-                "tcn_num_levels": 5,
-                "tcn_dropout": 0.15,
-                "tcn_dropout_1d": False,
+                "dropout": 0.15,
                 "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 3,
                 "use_time_encoding": True,
                 "loss": "weibull",
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
                 "device": device,
                 "segment_len": 900,
-            }
+            },
         },
-        "tcn_do-15_5ks": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": get_latest_ckpt("tcn_5ks_5lvl_64e_16bs_3fel_time_do-15"),
+        "weibull_dropout3": {
+            "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15",
-                "model_type": "tcn",
-                "tcn_kernel_size": 5,
-                "tcn_num_levels": 5,
-                "tcn_dropout": 0.15,
-                "tcn_dropout_1d": False,
+                "name": "biltsm_1l_64e_16bs_3fel_time_do3",
+                "model_type": "bilstm",
+                "bilstm_layers": 1,
+                "dropout": 0.3,
                 "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 3,
                 "use_time_encoding": True,
                 "loss": "weibull",
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
                 "device": device,
                 "segment_len": 900,
-            }
+            },
         },
-        "tcn_do-15_7ks": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": get_latest_ckpt("tcn_7ks_5lvl_64e_16bs_3fel_time_do-15"),
+        "weibull_5fel": {
+            "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "tcn_7ks_5lvl_64e_16bs_3fel_time_do-15",
-                "model_type": "tcn",
-                "tcn_kernel_size": 7,
-                "tcn_num_levels": 5,
-                "tcn_dropout": 0.15,
-                "tcn_dropout_1d": False,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "use_time_encoding": True,
-                "loss": "weibull",
-                "device": device,
-                "segment_len": 900,
-            }
-        },
-        "tcn_5ks_5fel": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": get_latest_ckpt("tcn_5ks_5lvl_64e_16bs_5fel_time"),
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_5fel_time",
-                "model_type": "tcn",
-                "tcn_kernel_size": 5,
-                "tcn_num_levels": 5,
-                "tcn_dropout_1d": False,
+                "name": "biltsm_1l_64e_16bs_5fel_time_do3",
+                "model_type": "bilstm",
+                "bilstm_layers": 1,
+                "dropout": 0.3,
                 "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 5,
                 "use_time_encoding": True,
                 "loss": "weibull",
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
                 "device": device,
                 "segment_len": 900,
-            }
+            },
         },
-        "tcn_5ks_e96": {
-            "model_class": RegressorBenchmarkWrapper,
-            "checkpoint_path": get_latest_ckpt("tcn_5ks_5lvl_96e_16bs_3fel_time"),
+        "weibull_5fel_droupout15": {
+            "model_class": RegressorTrainingWrapper,
             "params": {
-                "name": "tcn_5ks_5lvl_96e_16bs_3fel_time",
+                "name": "biltsm_1l_64e_16bs_5fel_time_do15",
+                "model_type": "bilstm",
+                "bilstm_layers": 1,
+                "dropout": 0.15,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 5,
+                "use_time_encoding": True,
+                "loss": "weibull",
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "gaussian_dropout15": {
+            "model_class": RegressorTrainingWrapper,
+            "params": {
+                "name": "biltsm_1l_64e_16bs_3fel_time_do15_gaussian",
+                "model_type": "bilstm",
+                "bilstm_layers": 1,
+                "dropout": 0.15,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "loss": "nll",
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "tcn_do-15_5ks": {
+            "model_class": RegressorTrainingWrapper,
+            "params": {
+                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15",
                 "model_type": "tcn",
-                "tcn_kernel_size": 5,
-                "tcn_num_levels": 5,
-                "tcn_dropout_1d": False,
-                "embed_dim": 96,
+                "kernel_size": 5,
+                "num_levels": 5,
+                "dropout": 0.15,
+                "dropout_1d": False,
+                "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 3,
                 "use_time_encoding": True,
                 "loss": "weibull",
+                "lr": 5e-4,
+                "patience": 25,
+                "epochs": 500,
                 "device": device,
                 "segment_len": 900,
-            }
+            },
         },
     }
+
+    for model_name, config in models_config.items():
+        ckpt_path = get_latest_ckpt(config["params"]["name"])
+        if ckpt_path:
+            config["checkpoint_path"] = ckpt_path
+            print(f"Found checkpoint for {model_name}: {ckpt_path}")
+        else:
+            raise FileNotFoundError(f"No checkpoint found for {model_name} with pattern {config['params']['name']}")
     
     results = benchmark_models(
         models_config,
