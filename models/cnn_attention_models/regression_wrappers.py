@@ -15,7 +15,7 @@ from models.wrappers import BenchmarkWrapper, TrainingWrapper, VisualizationWrap
 def _resolve_output_type(loss_type):
     if loss_type == "nll":
         return "gaussian"
-    if loss_type == "weibull":
+    if loss_type in ["weibull", "weibull_shifted", "weibull_beta"]:
         return "weibull"
     return "point"
 
@@ -45,6 +45,54 @@ def weibull_nll_loss(preds, y_true):
         - torch.pow(y_true / alpha, beta)
     )
     return -log_likelihood.mean()
+
+
+def weibull_nll_loss_shifted(preds, y_true, offset=5.0):
+    """
+    Deep Survival Weibull Loss with Target Shift.
+    Adds a constant offset to y_true to prevent Zero-Bound hedging and variance explosion.
+    """
+    alpha, beta = preds
+    eps = 1e-7
+
+    y_true_shifted = y_true + offset
+
+    alpha = torch.clamp(alpha, min=eps, max=1e5)
+    beta = torch.clamp(beta, min=eps, max=1e5)
+    y_true_shifted = torch.clamp(y_true_shifted, min=eps)
+
+    log_likelihood = (
+        torch.log(beta)
+        - torch.log(alpha)
+        + (beta - 1.0) * (torch.log(y_true_shifted) - torch.log(alpha))
+        - torch.pow(y_true_shifted / alpha, beta)
+    )
+    return -log_likelihood.mean()
+
+
+def weibull_nll_loss_beta_penalty(preds, y_true, penalty_weight=2.0):
+    """
+    Deep Survival Weibull Loss with Beta-Forcing Regularizer.
+    Penalizes low confidence (low beta) heavily when the worm is near death (y_true near 0).
+    """
+    alpha, beta = preds
+    eps = 1e-7
+
+    alpha = torch.clamp(alpha, min=eps, max=1e5)
+    beta = torch.clamp(beta, min=eps, max=1e5)
+    y_true = torch.clamp(y_true, min=eps)
+
+    log_likelihood = (
+        torch.log(beta)
+        - torch.log(alpha)
+        + (beta - 1.0) * (torch.log(y_true) - torch.log(alpha))
+        - torch.pow(y_true / alpha, beta)
+    )
+
+    # Beta penalty
+    beta_penalty = penalty_weight * (1.0 / beta) * torch.exp(-y_true)
+
+    return (-log_likelihood + beta_penalty).mean()
 
 
 def gaussian_nll_loss(mu, s, target):
@@ -112,6 +160,8 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
         )
         max_segment_number = 150  # Set in the dataset
 
+        loss_type = self.params.get("loss", "mse")
+
         all_trajectory_preds = []
         all_trajectory_vars = []
 
@@ -150,6 +200,10 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
                         )
                     elif self.model.output_type == "weibull":
                         alpha, beta = _weibull_positive_params(trajectory_preds)
+
+                        if loss_type == "weibull_shifted":
+                            offset = self.params.get("weibull_offset", 5.0)
+                            alpha = torch.clamp(alpha - offset, min=1e-5)
                         trajectory_preds = alpha.cpu().numpy()
                         trajectory_vars = _weibull_variance(
                             alpha, beta
@@ -234,14 +288,40 @@ class RegressorTrainingWrapper(TrainingWrapper):
 
         # Forward pass
         preds, _, _, aux_loss = model(X_padded, mask=mask)
+        loss_type = self.params.get("loss", "huber")
+
         if model.output_type == "gaussian":
             mu = preds[..., 0]
             s = preds[..., 1]
             loss = criterion(mu, s, targets) + aux_beta * aux_loss
             y_pred = mu
+
         elif model.output_type == "weibull":
-            loss = criterion(preds, targets) + aux_beta * aux_loss
-            y_pred, _ = _weibull_positive_params(preds)
+            alpha, _ = _weibull_positive_params(preds)
+
+            if loss_type == "weibull_shifted":
+                offset = self.params.get("weibull_offset", 5.0)
+
+                loss = (
+                    weibull_nll_loss_shifted(preds, targets, offset=offset)
+                    + aux_beta * aux_loss
+                )
+                y_pred = alpha - offset
+
+            elif loss_type == "weibull_beta":
+                penalty = self.params.get("weibull_penalty_weight", 2.0)
+                loss = (
+                    weibull_nll_loss_beta_penalty(
+                        preds, targets, penalty_weight=penalty
+                    )
+                    + aux_beta * aux_loss
+                )
+                y_pred = alpha
+
+            else:
+                loss = criterion(preds, targets) + aux_beta * aux_loss
+                y_pred = alpha
+
         else:
             loss = criterion(preds, targets) + aux_beta * aux_loss
             y_pred = preds
@@ -479,6 +559,8 @@ class RegressorVisualizationWrapper(VisualizationWrapper):
         max_segment_number = 150
         T_actual = int(total_segments)
 
+        loss_type = self.params.get("loss", "mse")
+
         predictions = []
         variances = []
         s_weights_all = []
@@ -517,8 +599,14 @@ class RegressorVisualizationWrapper(VisualizationWrapper):
                     variances.append(var_val)
                 elif self.model.output_type == "weibull":
                     alpha, beta = _weibull_positive_params(output)
+
+                    if loss_type == "weibull_shifted":
+                        offset = self.params.get("weibull_offset", 5.0)
+                        alpha = torch.clamp(alpha - offset, min=1e-5)
+
                     pred_val = alpha.item() * (max_segment_number / 3.0)
                     predictions.append(pred_val)
+
                     var_val = _weibull_variance(alpha, beta).item() * (
                         (max_segment_number / 3.0) ** 2
                     )

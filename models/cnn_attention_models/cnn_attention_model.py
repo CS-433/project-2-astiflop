@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from models.building_blocs.bilstm_temporal import BiLSTMTemporal
 from models.building_blocs.cnn_features_extractor import CNNFeatureExtractor
@@ -138,5 +139,8 @@ class CNNAttentionRegressor(nn.Module):
         # --- Final Regression ---
         reg_features = self.regressor(context_vector)
         output = self.output_layer(reg_features).squeeze(-1)
+
+        if self.output_type == "weibull":
+            output = F.softplus(output) + 1e-6
 
         return output, s_weights, v_weights, aux_loss
