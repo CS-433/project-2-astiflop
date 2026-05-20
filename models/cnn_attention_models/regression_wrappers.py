@@ -52,13 +52,10 @@ def weibull_nll_loss_shifted(preds, y_true, offset=5.0):
     Deep Survival Weibull Loss with Target Shift.
     Adds a constant offset to y_true to prevent Zero-Bound hedging and variance explosion.
     """
-    alpha, beta = preds
+    alpha, beta = _weibull_positive_params(preds)
     eps = 1e-7
 
     y_true_shifted = y_true + offset
-
-    alpha = torch.clamp(alpha, min=eps, max=1e5)
-    beta = torch.clamp(beta, min=eps, max=1e5)
     y_true_shifted = torch.clamp(y_true_shifted, min=eps)
 
     log_likelihood = (
@@ -75,11 +72,9 @@ def weibull_nll_loss_beta_penalty(preds, y_true, penalty_weight=2.0):
     Deep Survival Weibull Loss with Beta-Forcing Regularizer.
     Penalizes low confidence (low beta) heavily when the worm is near death (y_true near 0).
     """
-    alpha, beta = preds
+    alpha, beta = _weibull_positive_params(preds)
     eps = 1e-7
 
-    alpha = torch.clamp(alpha, min=eps, max=1e5)
-    beta = torch.clamp(beta, min=eps, max=1e5)
     y_true = torch.clamp(y_true, min=eps)
 
     log_likelihood = (
@@ -301,7 +296,6 @@ class RegressorTrainingWrapper(TrainingWrapper):
 
             if loss_type == "weibull_shifted":
                 offset = self.params.get("weibull_offset", 5.0)
-
                 loss = (
                     weibull_nll_loss_shifted(preds, targets, offset=offset)
                     + aux_beta * aux_loss
@@ -405,6 +399,10 @@ class RegressorTrainingWrapper(TrainingWrapper):
             criterion = gaussian_nll_loss
         elif loss_type == "weibull":
             criterion = weibull_nll_loss
+        elif loss_type == "weibull_shifted":
+            criterion = weibull_nll_loss_shifted
+        elif loss_type == "weibull_beta":
+            criterion = weibull_nll_loss_beta_penalty
         else:
             raise ValueError(f"Unknown loss type: {loss_type}")
 
