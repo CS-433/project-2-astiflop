@@ -103,6 +103,7 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
         use_time_encoding = self.params.get("use_time_encoding")
         device = self.params.get("device")
         loss_type = self.params.get("loss")
+        dropout = self.params.get("dropout", 0.3)
 
         output_type = _resolve_output_type(loss_type)
 
@@ -111,6 +112,7 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
             self.model = CNNAttentionRegressor(
                 segment_len=segment_len,
                 embed_dim=embed_dim,
+                dropout=dropout,
                 feature_extractor_layers=feature_extractor_layers,
                 temporal_type="hmm",
                 temporal_params=temporal_params,
@@ -118,16 +120,17 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
                 output_type=output_type,
             ).to(device)
         elif model_type == "tcn":
-            kernel_size = self.params.get("tcn_kernel_size", 3)
+            kernel_size = self.params.get("kernel_size", 3)
             temporal_params = {
                 "kernel_size": kernel_size,
-                "num_levels": self.params.get("tcn_num_levels", 6),
-                "dropout": self.params.get("tcn_dropout", 0.3),
-                "dropout_1d": self.params.get("tcn_dropout_1d", False),
+                "num_levels": self.params.get("num_levels", 6),
+                "dropout": self.params.get("dropout", 0.3),
+                "dropout_1d": self.params.get("dropout_1d", False),
             }
             self.model = CNNAttentionRegressor(
                 segment_len=segment_len,
                 embed_dim=embed_dim,
+                dropout=dropout,
                 feature_extractor_layers=feature_extractor_layers,
                 temporal_type="tcn",
                 temporal_params=temporal_params,
@@ -139,6 +142,7 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
             self.model = CNNAttentionRegressor(
                 segment_len=segment_len,
                 embed_dim=embed_dim,
+                dropout=dropout,
                 feature_extractor_layers=feature_extractor_layers,
                 temporal_type="bilstm",
                 temporal_params=temporal_params,
