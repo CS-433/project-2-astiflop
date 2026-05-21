@@ -1,4 +1,5 @@
 import argparse
+import glob
 import os
 import random
 import sys
@@ -348,140 +349,163 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    def get_latest_ckpt(name_pattern):
+        files = glob.glob(f"ckpts/best_{name_pattern}_[0-9][0-9]-[0-9][0-9].pth")
+        if not files:
+            return None
+        return max(files, key=os.path.getctime)
+
     # Determine device
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Define models to visualize
     models_config = {
-        "bilstm_yes": {
+        "bilstm": {
             "model_class": RegressorVisualizationWrapper,
-            "checkpoint_path": "ckpts/gaussian/best_bilstm_1l_64e_8bs_3fel_wtime_18-49.pth",
             "params": {
-                "name": "bilstm_1l_64e_8bs_3fel_wtime",
+                "name": "bilstm_1l_64e_12bs_3fel_time",
                 "model_type": "bilstm",
                 "bilstm_layers": 1,
                 "embed_dim": 64,
-                "batch_size": 16,
+                "batch_size": 12,
                 "feature_extractor_layers": 3,
                 "use_time_encoding": True,
                 "loss": "huber",
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
                 "device": device,
                 "segment_len": 900,
             },
         },
-        "bilstm_gaussian_yes": {
+        "bilstm_gaussian": {
             "model_class": RegressorVisualizationWrapper,
-            "checkpoint_path": "ckpts/gaussian/best_bilstm_1l_64e_8bs_3fel_wtime_gaussian_18-57.pth",
             "params": {
-                "name": "bilstm_1l_64e_8bs_3fel_wtime_gaussian",
-                "model_type": "bilstm",
+                "name": "gaussian_1l_64e_12bs_3fel_time",
+                "model_type": "gaussian",
                 "bilstm_layers": 1,
                 "embed_dim": 64,
-                "batch_size": 16,
+                "batch_size": 12,
                 "feature_extractor_layers": 3,
                 "use_time_encoding": True,
                 "loss": "nll",
-                "lr": 5e-4,
-                "patience": 25,
-                "epochs": 500,
                 "device": device,
                 "segment_len": 900,
             },
         },
-        # "dummy_segment": {
-        #     "model_class": DummyVisualizationWrapper,
-        #     "checkpoint_path": None,
-        #     "params": {
-        #         "model_type": "segment",
-        #         "device": device
-        #     }
-        # }
-        "bilstm_yes2": {
+        "tcn_gaussian": {
             "model_class": RegressorVisualizationWrapper,
-            "checkpoint_path": "ckpts/best_bilstm_1l_64e_16bs_3fel_time_02-41.pth",
             "params": {
-                "name": "bilstm_1l_64e_16bs_3fel_time",
-                "model_type": "bilstm",
-                "bilstm_layers": 1,
+                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_gaus",
+                "model_type": "tcn",
+                "kernel_size": 5,
+                "num_levels": 5,
+                "dropout": 0.15,
                 "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 3,
+                "dropout_1d": False,
+                "dropout": 0.15,
                 "use_time_encoding": True,
-                "loss": "huber",
+                "loss": "nll",
                 "lr": 5e-4,
-                "patience": 25,
+                "patience": 100,
                 "epochs": 500,
                 "device": device,
                 "segment_len": 900,
             },
         },
-        "tcn_yes": {
+        "bilstm_weibull": {
             "model_class": RegressorVisualizationWrapper,
-            "checkpoint_path": "ckpts/best_tcn_3ks_6lvl_64e_16bs_3fel_time_02-57.pth",
             "params": {
-                "name": "tcn_3ks_6lvl_64e_16bs_3fel_time",
+                "name": "gaussian_1l_64e_12bs_3fel_time_weibull",
+                "model_type": "gaussian",
+                "bilstm_layers": 1,
+                "embed_dim": 64,
+                "batch_size": 12,
+                "feature_extractor_layers": 3,
+                "dropout": 0.15,
+                "use_time_encoding": True,
+                "loss": "weibull",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "tcn_weibull": {
+            "model_class": RegressorVisualizationWrapper,
+            "params": {
+                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15",
                 "model_type": "tcn",
-                "kernel_size": 3,
-                "num_levels": 6,
+                "kernel_size": 5,
+                "num_levels": 5,
+                "dropout": 0.15,
                 "dropout_1d": False,
                 "embed_dim": 64,
                 "batch_size": 16,
                 "feature_extractor_layers": 3,
                 "use_time_encoding": True,
                 "loss": "weibull",
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "tcn_shifted": {
+            "model_class": RegressorVisualizationWrapper,
+            "params": {
+                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_shifted",
+                "model_type": "tcn",
+                "kernel_size": 5,
+                "num_levels": 5,
+                "dropout": 0.15,
+                "dropout_1d": False,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "dropout": 0.15,
+                "dropout_1d": False,
+                "use_time_encoding": True,
+                "loss": "weibull_shifted",
+                "weibull_offset": 10.0,
                 "lr": 5e-4,
-                "patience": 25,
+                "patience": 100,
                 "epochs": 500,
                 "device": device,
                 "segment_len": 900,
             },
         },
-        # "tcn_yes_1d": {
-        #     "model_class": RegressorVisualizationWrapper,
-        #     "checkpoint_path": "ckpts/best_tcn_3ks_6lvl_64e_16bs_3fel_time_1d_03-10.pth",
-        #     "params": {
-        #         "name": "tcn_3ks_6lvl_64e_16bs_3fel_time_1d",
-        #         "model_type": "tcn",
-        #         "kernel_size": 3,
-        #         "num_levels": 6,
-        #         "dropout_1d": True,
-        #         "embed_dim": 64,
-        #         "batch_size": 16,
-        #         "feature_extractor_layers": 3,
-        #         "use_time_encoding": True,
-        #         "loss": "weibull",
-        #         "lr": 5e-4,
-        #         "patience": 25,
-        #         "epochs": 500,
-        #         "device": device,
-        #         "segment_len": 900,
-        #     },
-        # },
-        "tcn_yes_5ks": {
+        "tcn_beta": {
             "model_class": RegressorVisualizationWrapper,
-            "checkpoint_path": "ckpts/best_tcn_5ks_6lvl_64e_16bs_3fel_time_03-23.pth",
             "params": {
-                "name": "tcn_5ks_6lvl_64e_16bs_3fel_time",
+                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_beta",
                 "model_type": "tcn",
                 "kernel_size": 5,
-                "num_levels": 6,
-                "dropout_1d": True,
+                "num_levels": 5,
+                "dropout": 0.15,
+                "dropout_1d": False,
                 "embed_dim": 64,
                 "batch_size": 16,
-                "feature_extractor_layers": 3,
+                "feature_extractor_layers": 5,
                 "use_time_encoding": True,
-                "loss": "weibull",
+                "loss": "weibull_beta",
+                "weibull_penalty_weight": 2.0,
                 "lr": 5e-4,
-                "patience": 25,
+                "patience": 100,
                 "epochs": 500,
                 "device": device,
                 "segment_len": 900,
             },
         },
     }
+
+    for model_name, config in models_config.items():
+        ckpt_path = get_latest_ckpt(config["params"]["name"])
+        if ckpt_path:
+            config["checkpoint_path"] = ckpt_path
+            print(f"Found checkpoint for {model_name}: {ckpt_path}")
+        else:
+            raise FileNotFoundError(
+                f"No checkpoint found for {model_name} with pattern {config['params']['name']}"
+            )
 
     # Adjust paths if executing from project root
     if not os.path.exists(args.scaler_config_path):
