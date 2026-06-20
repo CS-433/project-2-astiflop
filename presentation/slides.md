@@ -144,6 +144,8 @@ Based only on the raw trajectories, can we guess if a worm is being treated with
 
 <div class="text-xs uppercase tracking-wide opacity-60 font-semibold border-b border-gray-300/50 pb-2">
   Description
+  <br>
+<span style="opacity:0">a</span>
 </div>
 
 </div>
@@ -159,7 +161,7 @@ Based only on the raw trajectories, can we guess if a worm is being treated with
 </div>
 
 <div class="text-sm leading-relaxed pt-1">
-  <strong>Computer vision</strong>: CNN-based model applied on a rendered image of the trajectory.
+  CNN-based model applied on a rendered image of the trajectory.
 </div>
 
 </div>
@@ -173,7 +175,7 @@ Based only on the raw trajectories, can we guess if a worm is being treated with
 </div>
 
 <div class="text-sm leading-relaxed pt-1">
-  <strong>Feature extraction</strong>: Hand-crafted features like angular velocities, tendencies, tortuosity, etc., fed to an estimator.
+  Hand-crafted features like angular velocities, tendencies, tortuosity, etc., fed to an estimator.
 </div>
 
 </div>
@@ -187,7 +189,7 @@ Based only on the raw trajectories, can we guess if a worm is being treated with
 </div>
 
 <div class="text-sm leading-relaxed pt-1">
-  <strong>Time series segmentation</strong>: segment the raw data into fixed-length windows, fed directly in an estimator.
+  Segment the raw data into fixed-length windows, fed directly in an estimator.
 </div>
 
 </div>
@@ -321,45 +323,82 @@ class: slide-bg-2
 
 <!-- Slide 9 — Staircase training -->
 
-# Training Method
-## Staircase Sampling
+# Training Specificities
+<div v-click="1">
 
-::left::
+## 1. Worm level Validation split
+</div>
+<div v-click="2">
 
-<v-clicks>
+## 2. Data augmentation 
+</div>
+<div v-click="3">
 
-At each training step, sample **prefixes** of a worm's life:
+## 3. Staircase Sampling
+</div>
+<div v-click="4">
 
-```
-Segment 1        → predict remaining
-Segments 1–2     → predict remaining
-Segments 1–3     → predict remaining
-       ⋮
-Segments 1–T     → predict remaining
-```
-
-Mimics **real-world deployment**: predictions improve as more data arrives.
-
-</v-clicks>
+## 4. Scalar vs Distribution prediction
+</div>
 
 ::right::
-
-<div v-click class="staircase-viz">
-  <div v-for="h in [20,35,50,65,80,95,110,125,140]" :key="h" class="stair-step" :style="{ height: h + 'px' }" />
+<div v-click="1">
+  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
+    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">1</div>
+    <div>
+      <div class="font-semibold mb-1">Preventing data leakage</div>
+      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
+All segments related to a worm are in one of the split
+      </pre>
+    </div>
+  </div>
 </div>
 
-<v-clicks>
-
-<div class="glass-card p-3 mt-4 text-sm">
-
-- **Training:** 4 random prefix lengths per worm per batch
-- **Validation:** stride of 10 for reproducibility
-- **Target:** normalized remaining segments (0 → 1)
-- **CV:** Group K-Fold — all segments of one worm in same fold
-
+<div v-click="2">
+  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
+    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center ">2</div>
+    <div>
+      <div class="font-semibold mb-1">From 1 trajectory, create 5 differents</div>
+      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
+A tool against overfittings:
+- Scaling
+- Rotation
+- Offsets
+      </pre>
+    </div>
+  </div>
 </div>
 
-</v-clicks>
+<div v-click="3">
+  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
+    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">3</div>
+    <div>
+      <div class="font-semibold mb-1">Sample <strong>prefixes</strong> of a worm's life:</div>
+      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
+Segment 1            → predict remaining
+Segments 1–2     → predict remaining
+       ⋮
+Segments 1–T     → predict remaining
+      </pre>
+    </div>
+  </div>
+</div>
+
+<div v-click="4">
+  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
+    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">4</div>
+    <div>
+      <div class="font-semibold mb-1">Predicting gaussian parameters</div>
+      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
+Several options have been explored:
+- Direct scalar prediction
+- Gaussian distribution
+- Weibull distribution
+      </pre>
+    </div>
+  </div>
+</div>
+
 
 ---
 layout: default
@@ -370,73 +409,128 @@ class: slide-bg-3
 
 # Benchmark Results
 
-<div class="text-sm mb-4 opacity-80">
-  Survival-oriented metrics on held-out worms (Group K-Fold)
-</div>
-
-<div class="metric-grid mb-4">
-
-<div class="metric-card">
-  <div class="value">MAE ↓</div>
-  <div class="label">Mean Absolute Error</div>
-</div>
-
-<div class="metric-card">
-  <div class="value">CRPS ↓</div>
-  <div class="label">Probabilistic forecast quality</div>
-</div>
-
-<div class="metric-card">
-  <div class="value">Coverage</div>
-  <div class="label">95% prediction interval</div>
-</div>
-
-<div class="metric-card">
-  <div class="value">Tier MAE</div>
-  <div class="label">Early / mid / late life</div>
-</div>
-
-<div class="metric-card">
-  <div class="value">Earlyness ↑</div>
-  <div class="label">When predictions stabilize</div>
-</div>
-
-<div class="metric-card">
-  <div class="value">Sharpness ↓</div>
-  <div class="label">Uncertainty calibration</div>
-</div>
+<div class="text-sm mb-3 opacity-80">
 
 </div>
 
-<div class="grid grid-cols-2 gap-4 text-left">
+<div class="glass-card p-3 text-left overflow-x-auto">
 
-<div class="glass-card p-4">
+<table class="w-full text-xs border-collapse">
+<thead>
+<tr class="border-b border-gray-300/50 opacity-70">
+  <th class="text-left py-1 pr-2 font-semibold">Model</th>
+  <th class="text-center py-1 px-1 font-semibold">MAE</th>
+  <th class="text-center py-1 px-1 font-semibold">T1</th>
+  <th class="text-center py-1 px-1 font-semibold">T2</th>
+  <th class="text-center py-1 px-1 font-semibold">T3</th>
+  <th class="text-center py-1 px-1 font-semibold">CRPS</th>
+  <th class="text-center py-1 px-1 font-semibold">Cov.</th>
+  <th class="text-center py-1 px-1 font-semibold">Early.</th>
+  <th class="text-center py-1 px-1 font-semibold">NLL</th>
+  <th class="text-center py-1 pl-1 font-semibold">Sharp.</th>
+</tr>
+</thead>
+<tbody class="font-mono">
 
-**Best models (TCN + Gaussian / Weibull)**
+<tr class="opacity-60">
+  <td class="py-1 pr-2 font-sans">Random guess</td>
+  <td class="text-center px-1">51.8</td>
+  <td class="text-center px-1">40.9</td>
+  <td class="text-center px-1">49.0</td>
+  <td class="text-center px-1">64.9</td>
+  <td class="text-center px-1">51.0</td>
+  <td class="text-center px-1">3.7%</td>
+  <td class="text-center px-1">0.0</td>
+  <td class="text-center px-1">1015.2</td>
+  <td class="text-center pl-1">5.5</td>
+</tr>
 
-<!-- Replace with your actual numbers from avg_results.json -->
-| Model | MAE | CRPS |
-|-------|-----|------|
-| TCN Gaussian | _._ | _._ |
-| BiLSTM Weibull | _._ | _._ |
+<tr class="opacity-60">
+  <td class="py-1 pr-2 font-sans">Average guessing</td>
+  <td class="text-center px-1">7.2</td>
+  <td class="text-center px-1">7.2</td>
+  <td class="text-center px-1">7.2</td>
+  <td class="text-center px-1">7.2</td>
+  <td class="text-center px-1">6.4</td>
+  <td class="text-center px-1">21.1%</td>
+  <td class="text-center px-1">27.6</td>
+  <td class="text-center px-1">21.5</td>
+  <td class="text-center pl-1">5.5</td>
+</tr>
+
+<tr class="border-t border-gray-300/30">
+  <!-- <td class="py-1 pr-2 font-sans font-semibold" style="color:#15803d">tcn_do-15_5ks ★</td> -->
+  <td class="py-1 pr-2 font-sans font-semibold" style="color:#15803d">TCN + Weibull ★</td>
+  <td class="text-center px-1 font-semibold" style="color:#15803d">9.7</td>
+  <td class="text-center px-1">9.1</td>
+  <td class="text-center px-1">7.9</td>
+  <td class="text-center px-1">12.0</td>
+  <td class="text-center px-1">6.7</td>
+  <td class="text-center px-1 font-semibold" style="color:#15803d">96.7%</td>
+  <td class="text-center px-1">46.7</td>
+  <td class="text-center px-1">3.9</td>
+  <td class="text-center pl-1">48.8</td>
+</tr>
+
+<tr>
+  <td class="py-1 pr-2 font-sans">TCN Gaussian</td>
+  <td class="text-center px-1">11.8</td>
+  <td class="text-center px-1">8.4</td>
+  <td class="text-center px-1">9.7</td>
+  <td class="text-center px-1">17.1</td>
+  <td class="text-center px-1">8.1</td>
+  <td class="text-center px-1">91.7%</td>
+  <td class="text-center px-1">48.4</td>
+  <td class="text-center px-1">4.1</td>
+  <td class="text-center pl-1">50.3</td>
+</tr>
+
+<tr>
+  <td class="py-1 pr-2 font-sans">BiLSTM Scalar</td>
+  <td class="text-center px-1">13.2</td>
+  <td class="text-center px-1">7.8</td>
+  <td class="text-center px-1">10.3</td>
+  <td class="text-center px-1">21.2</td>
+  <td class="text-center px-1">12.5</td>
+  <td class="text-center px-1">11.1%</td>
+  <td class="text-center px-1">50.2</td>
+  <td class="text-center px-1">66.4</td>
+  <td class="text-center pl-1">5.5</td>
+</tr>
+
+<tr>
+  <td class="py-1 pr-2 font-sans">BiLSTM Gaussian</td>
+  <td class="text-center px-1">14.4</td>
+  <td class="text-center px-1">9.3</td>
+  <td class="text-center px-1">11.4</td>
+  <td class="text-center px-1">22.1</td>
+  <td class="text-center px-1">11.3</td>
+  <td class="text-center px-1">54.1%</td>
+  <td class="text-center px-1">48.8</td>
+  <td class="text-center px-1">5.4</td>
+  <td class="text-center pl-1">30.1</td>
+</tr>
+
+</tbody>
+</table>
 
 </div>
 
-<div class="glass-card p-4 flex items-center justify-center min-h-140px">
+<div class="grid grid-cols-3 gap-3 mt-3 text-xs text-left">
 
-<!-- Add benchmark plot: ../benchmark_results/plot.png -->
-<div class="text-center opacity-60 text-sm">
-  📊 Insert benchmark plot here<br/>
-  <code>python scripts/benchmark_pipeline.py</code>
+<div class="glass-card p-2">
+  <strong>Best ML model:</strong> TCN 5k steps, with MAE of ~10 segments, corresponding to ~1 day. 
+</div>
+
+<div class="glass-card p-2">
+  <strong>Tier MAE (T1/T2/T3):</strong> early / mid / late remaining lifespan.
+</div>
+
+<div class="glass-card p-2">
+  The <strong>Weibull distribution</strong> is a good help for the models.
 </div>
 
 </div>
-
-</div>
-
-<!--
-Run benchmark_pipeline.py and drop result plots into presentation/public/ or reference ../benchmark_results/
--->
 
 ---
 layout: default
@@ -503,21 +597,10 @@ class: slide-bg-6
 
 <div class="conclusion-list text-left max-w-3xl mx-auto mt-6 text-lg">
 
-<v-clicks>
-
-- **Movement trajectories carry lifespan signal** — CNN + attention models predict remaining life from raw segments
-- **Staircase training** mirrors progressive observation and improves real-world usability
-- **Interpretability** reveals focus on low-movement segments, consistent with aging biology
-- **Terbinafine classification** validates that behavioral differences are learnable without hand-crafted features
-- **Rigorous validation** (Group K-Fold) ensures generalization to unseen worms
-
-</v-clicks>
 
 </div>
 
 <div v-click class="glass-card p-4 mt-8 max-w-2xl mx-auto text-sm">
-
-**Future work:** Joint multi-task model (lifespan + treatment), richer uncertainty quantification, deployment on live tracking streams.
 
 </div>
 
@@ -528,16 +611,8 @@ class: slide-bg-cover text-center
 
 <!-- Slide 14 — Thanks -->
 
-# Thank You
+# Thank you for you attention !
 
 <div class="subtitle text-2xl mt-4 font-normal opacity-90">
-  Questions?
-</div>
-
-<div class="mt-10 text-sm opacity-70">
-  <div>project-2-astiflop</div>
-  <div class="mt-2">
-    <code>python scripts/training_pipeline.py</code> ·
-    <code>python scripts/visualization_pipeline.py</code>
-  </div>
+  Any questions?
 </div>
