@@ -30,11 +30,6 @@ const steps = [
     title: 'Features',
     desc: 'Speed, turning rate, normalized coords',
   },
-  {
-    icon: '🧠',
-    title: 'Model tensor',
-    desc: 'Shape (B, T, V, L) — batch, segments, variates, length',
-  },
 ]
 
 const tensorDetail = computed(() => {
@@ -71,8 +66,8 @@ const tensorDetail = computed(() => {
     </div>
 
     <div v-click="6" class="tensor-box glass-card mt-6">
-      <div class="text-sm font-semibold mb-2 text-slate-700">
-        Final tensor fed to the model
+      <div class="tensor-title text-base font-semibold mb-2 text-slate-700">
+        Model Tensor
       </div>
       <div class="tensor-visual">
         <div v-for="(dim, key) in { B: 'Batch', T: 'Time (segments)', V: 'Variates', L: 'Length' }" :key="key" class="tensor-dim">
@@ -80,7 +75,7 @@ const tensorDetail = computed(() => {
           <span class="dim-name">{{ dim }}</span>
         </div>
       </div>
-      <div v-if="tensorDetail" v-click="7" class="tensor-detail mt-4">
+      <div v-if="$clicks >= 7 && tensorDetail" class="tensor-detail mt-3">
         <div v-for="(desc, key) in tensorDetail" :key="key" class="detail-row">
           <code>{{ key }}</code>
           <span>{{ desc }}</span>
@@ -93,6 +88,22 @@ const tensorDetail = computed(() => {
 <style scoped>
 .preprocessing-flow {
   width: 100%;
+}
+
+.pipeline {
+  margin-top: 0.45rem;
+}
+
+.tensor-box {
+  width: fit-content;
+  max-width: 100%;
+  margin: 1rem auto 0;
+  padding: 0.45rem 0.75rem 0.55rem;
+}
+
+.tensor-title {
+  text-align: center;
+  margin-bottom: 0.3rem;
 }
 
 .step-icon {
@@ -115,6 +126,8 @@ const tensorDetail = computed(() => {
 
 .pipeline-step {
   opacity: 0.35;
+  height: 100%;
+  min-height: 168px;
 }
 
 .pipeline-step.active {
@@ -123,7 +136,7 @@ const tensorDetail = computed(() => {
 
 .tensor-visual {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.3rem;
   justify-content: center;
   flex-wrap: wrap;
 }
@@ -132,31 +145,31 @@ const tensorDetail = computed(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: 0.4rem 0.6rem;
   background: linear-gradient(135deg, #eff6ff, #f0fdf4);
   border-radius: 0.5rem;
   border: 1px solid #bfdbfe;
-  min-width: 90px;
+  min-width: 72px;
 }
 
 .dim-letter {
   font-family: var(--font-mono);
-  font-size: 1.5rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--accent);
 }
 
 .dim-name {
-  font-size: 0.7rem;
+  font-size: 0.58rem;
   color: var(--text-muted);
-  margin-top: 0.25rem;
+  margin-top: 0.12rem;
   text-align: center;
 }
 
 .tensor-detail {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
+  gap: 0.35rem 0.5rem;
 }
 
 .detail-row {
@@ -175,10 +188,6 @@ const tensorDetail = computed(() => {
   font-size: 0.8rem;
   min-width: 1.5rem;
   text-align: center;
-}
-
-.tensor-box {
-  padding: 1.25rem;
 }
 
 @media (max-width: 768px) {

@@ -443,62 +443,12 @@ layout: default
 class: slide-bg-4
 ---
 
-<!-- Slide 11 — Visualization analysis -->
+<!-- Slide 11 — Visualization -->
 
-# Visualization & Interpretability
+# Visualization
 
-<div class="attention-demo mt-4">
-
-<div class="text-left">
-
-<v-clicks>
-
-**Key finding:** The model assigns **higher attention** to segments where the worm **moves less** — periods of reduced locomotion correlate with aging phenotypes.
-
-</v-clicks>
-
-<v-click>
-
-- Low-speed segments → higher segment attention weights
-- Interpretable via `plot_regression_interpretation.py`
-- Attention heatmaps align with **immobility bursts** near end-of-life
-
-</v-click>
-
-<div v-click class="glass-card p-3 mt-4 text-sm">
-
-Staircase visualization: as prefixes grow, attention concentrates on late-life low-movement segments that carry lifespan signal.
-
-</div>
-
-</div>
-
-<div>
-
-<div class="glass-card p-4">
-<div class="text-xs font-semibold mb-2 opacity-70">Segment attention (illustrative)</div>
-<div class="attention-bars">
-  <div class="attention-bar" style="height: 25%" />
-  <div class="attention-bar" style="height: 40%" />
-  <div class="attention-bar low-move" style="height: 85%" />
-  <div class="attention-bar" style="height: 30%" />
-  <div class="attention-bar low-move" style="height: 92%" />
-  <div class="attention-bar low-move" style="height: 78%" />
-  <div class="attention-bar" style="height: 35%" />
-  <div class="attention-bar low-move" style="height: 88%" />
-</div>
-<div class="flex justify-between text-xs mt-1 opacity-60">
-  <span>Early life</span>
-  <span>Late life ↓ movement</span>
-</div>
-</div>
-
-<div v-click class="glass-card p-3 mt-3 text-xs text-center opacity-70">
-  Replace with output from <code>visualization_pipeline.py</code> or <code>plot_regression_interpretation.py</code>
-</div>
-
-</div>
-
+<div class="flex items-center justify-center h-full">
+  <img src="./rsrc/visualization.png" alt="Segment attention visualization" class="max-h-[60vh] w-auto shadow-lg rounded-lg" />
 </div>
 
 ---
@@ -506,7 +456,48 @@ layout: default
 class: slide-bg-5
 ---
 
-<!-- Slide 12 — Conclusion -->
+<!-- Slide 12 — Interpretability -->
+
+# Interpretability
+
+<div class="attention-demo mt-4">
+
+<div class="text-left">
+
+
+**Key finding:** The model assigns **higher attention** to segments where the worm **moves less** — periods of reduced locomotion correlate with aging phenotypes.
+
+
+<v-click>
+
+- Speed is the main attended variate
+- The prediction declines after several low-speed "sentinel" segments
+- Low-speed segments → higher segment attention weights
+
+</v-click>
+
+<div v-click class="glass-card p-3 mt-4 text-sm">
+
+As time grows, attention concentrates on late-life low-movement segments comparing them to sentinel segments in early life.
+
+</div>
+
+</div>
+
+<div>
+
+<img src="./rsrc/visualization.png" alt="Segment attention visualization" class="w-full max-w-2xl shadow-lg rounded-lg" />
+
+</div>
+
+</div>
+
+---
+layout: default
+class: slide-bg-6
+---
+
+<!-- Slide 13 — Conclusion -->
 
 # Conclusion
 
@@ -535,7 +526,7 @@ layout: center
 class: slide-bg-cover text-center
 ---
 
-<!-- Slide 13 — Thanks -->
+<!-- Slide 14 — Thanks -->
 
 # Thank You
 

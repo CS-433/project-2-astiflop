@@ -18,37 +18,48 @@ The .pt file should contain the following keys:
 - 'data_tensor': A numpy array containing the trajectory data of shape (T_actual, 3, segment_length), where the 3 channels are [X, Y, Speed].
 """
 
-
-import torch
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button
-from matplotlib.animation import FuncAnimation
-import numpy as np
 import argparse
 import os
 
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from matplotlib.animation import FuncAnimation
+from matplotlib.widgets import Button, Slider
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-parser = argparse.ArgumentParser(description="Visualize interpretation of regression outputs.")
+parser = argparse.ArgumentParser(
+    description="Visualize interpretation of regression outputs."
+)
 parser.add_argument("path", type=str, help="Path to the inference dump (.pt) file")
 args = parser.parse_args()
 
 path = args.path
 dump_dict = torch.load(path, weights_only=False)
 
+
 def to_np(v):
-    if hasattr(v, 'numpy'): # detect if it s a torch tensor
+    if hasattr(v, "numpy"):  # detect if it s a torch tensor
         return v.detach().cpu().numpy()
     return np.array(v)
 
-T_actual =          int(dump_dict['T_actual'])
-true_objective =    to_np(dump_dict['true_objective'])
-true_remaining =    to_np(dump_dict['true_remaining'])
-predictions =       to_np(dump_dict['predictions'])
-variances =         to_np(dump_dict['variances'])
-s_weights_cpu =     [to_np(x) for x in dump_dict['s_weights_cpu']]
-v_weights_cpu =     [to_np(x) for x in dump_dict['v_weights_cpu']]
-data_tensor =       to_np(dump_dict['data_tensor'])
+
+T_actual = int(dump_dict["T_actual"])
+true_objective = to_np(dump_dict["true_objective"])
+true_remaining = to_np(dump_dict["true_remaining"])
+predictions = to_np(dump_dict["predictions"])
+has_variances = "variances" in dump_dict
+if has_variances:
+    variances = to_np(dump_dict["variances"])
+else:
+    variances = np.zeros_like(predictions, dtype=float)
+    print(
+        "Warning: 'variances' is missing from the inference dump; confidence intervals will not be shown."
+    )
+s_weights_cpu = [to_np(x) for x in dump_dict["s_weights_cpu"]]
+v_weights_cpu = [to_np(x) for x in dump_dict["v_weights_cpu"]]
+data_tensor = to_np(dump_dict["data_tensor"])
 
 # Global variables
 steps = np.arange(1, T_actual + 1)
@@ -65,30 +76,55 @@ ax3, ax4 = axs[1]
 # PLOT 1 (Timeline)
 # ---------------------------------------------------------
 plot1_xlim = max(1.5 * T_actual, max_predicted_total, max_true_total)
-y_max_val = max(np.max(true_remaining), np.max(predictions + 1.96 * np.sqrt(variances))) * 1.1
+y_max_val = (
+    max(np.max(true_remaining), np.max(predictions + 1.96 * np.sqrt(variances))) * 1.1
+)
 
-line_true, = ax1.plot([], [], label="True Remaining", linestyle="--", marker="o", markersize=4, color="blue", alpha=0.7)
-line_pred, = ax1.plot([], [], label="Predicted Remaining", color='red', marker="x", markersize=4)
-fill_ci_dummy = ax1.fill_between([], [], [], color='red', alpha=0.2, label='95% CI')
+(line_true,) = ax1.plot(
+    [],
+    [],
+    label="True Remaining",
+    linestyle="--",
+    marker="o",
+    markersize=4,
+    color="blue",
+    alpha=0.7,
+)
+(line_pred,) = ax1.plot(
+    [], [], label="Predicted Remaining", color="red", marker="x", markersize=4
+)
+fill_ci_dummy = (
+    ax1.fill_between([], [], [], color="red", alpha=0.2, label="95% CI")
+    if has_variances
+    else None
+)
 fill_ci = None
 fill_ci_vspan = None
 
-vline_pred = ax1.axvline(x=-1, color='red', linestyle='-', alpha=0.6, label='Current Pred Total')
-vline_true = ax1.axvline(x=-1, color='blue', linestyle='-', alpha=0.6, label='Current True Total')
+vline_pred = ax1.axvline(
+    x=-1, color="red", linestyle="-", alpha=0.6, label="Current Pred Total"
+)
+vline_true = ax1.axvline(
+    x=-1, color="blue", linestyle="-", alpha=0.6, label="Current True Total"
+)
 
 ax1.set_xlim(0, plot1_xlim)
 ax1.set_ylim(0, y_max_val)
 ax1.set_xlabel("Time (Segments observed)")
 ax1.set_ylabel("Remaining segments")
 ax1.legend()
-ax1.grid(True, linestyle='--', alpha=0.6)
+ax1.grid(True, linestyle="--", alpha=0.6)
 ax1.set_title("Lifespan Prediction Timeline")
 
 # ---------------------------------------------------------
 # PLOT 2 (Trajectories)
 # ---------------------------------------------------------
 # Constraints
-valid_points_mask = ~((data_tensor[:T_actual, 0, :] == 0) & (data_tensor[:T_actual, 1, :] == 0) & (data_tensor[:T_actual, 2, :] == 0))
+valid_points_mask = ~(
+    (data_tensor[:T_actual, 0, :] == 0)
+    & (data_tensor[:T_actual, 1, :] == 0)
+    & (data_tensor[:T_actual, 2, :] == 0)
+)
 valid_x = data_tensor[:T_actual, 0, :][valid_points_mask]
 valid_y = data_tensor[:T_actual, 1, :][valid_points_mask]
 if len(valid_x) > 0:
@@ -110,7 +146,7 @@ sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=1))
 sm.set_array([])
 cbar = fig.colorbar(sm, ax=ax2, fraction=0.03, shrink=0.5, pad=0.04)
 cbar.set_ticks([0, 1])
-cbar.set_ticklabels(['t=0', f't={T_actual}'])
+cbar.set_ticklabels(["t=0", f"t={T_actual}"])
 
 traj_lines = []
 for i in range(T_actual):
@@ -119,13 +155,13 @@ for i in range(T_actual):
     valid_mask = ~((x_data == 0) & (y_data == 0))
     if np.any(valid_mask):
         last_valid = np.max(np.nonzero(valid_mask)[0])
-        x_filtered = x_data[:last_valid+1]
-        y_filtered = y_data[:last_valid+1]
+        x_filtered = x_data[: last_valid + 1]
+        y_filtered = y_data[: last_valid + 1]
     else:
         x_filtered = x_data
         y_filtered = y_data
-            
-    line, = ax2.plot(x_filtered, y_filtered, linewidth=1.5, alpha=0.9, visible=False)
+
+    (line,) = ax2.plot(x_filtered, y_filtered, linewidth=1.5, alpha=0.9, visible=False)
     traj_lines.append(line)
 
 
@@ -134,8 +170,8 @@ ax2.set_xlabel("X coordinate")
 ax2.set_ylabel("Y coordinate")
 ax2.set_xlim(*plot2_xlim)
 ax2.set_ylim(*plot2_ylim)
-ax2.set_aspect('equal', adjustable='box')
-ax2.grid(True, linestyle='--', alpha=0.3)
+ax2.set_aspect("equal", adjustable="box")
+ax2.grid(True, linestyle="--", alpha=0.3)
 
 # ---------------------------------------------------------
 # PLOT 3 (Attention Box)
@@ -144,13 +180,25 @@ true_lifespan = max_true_total
 colors = ["#ff9999", "#66b3ff", "#99ff99"]
 variates = ["X", "Y", "Speed"]
 
-num_vars = len(v_weights_cpu[0]) if len(np.shape(v_weights_cpu[0])) == 1 else np.shape(v_weights_cpu[0])[1]
+num_vars = (
+    len(v_weights_cpu[0])
+    if len(np.shape(v_weights_cpu[0])) == 1
+    else np.shape(v_weights_cpu[0])[1]
+)
 
 bar_containers = []
 for i in range(num_vars):
-    # Initialize with zeros for heights. 
+    # Initialize with zeros for heights.
     # We will update these heights directly on update() using `.patches`
-    bc = ax3.bar(np.arange(1, T_actual + 1), np.zeros(T_actual), color=colors[i], label=variates[i], edgecolor='black', linewidth=0.5, alpha=0.8)
+    bc = ax3.bar(
+        np.arange(1, T_actual + 1),
+        np.zeros(T_actual),
+        color=colors[i],
+        label=variates[i],
+        edgecolor="black",
+        linewidth=0.5,
+        alpha=0.8,
+    )
     bar_containers.append(bc)
 
 ax3.set_xlim(0, true_lifespan)
@@ -159,36 +207,41 @@ ax3.set_xlabel("Segment Index")
 ax3.set_ylabel("Attention Weight")
 ax3.set_title("Current Segment Attention by Feature")
 ax3.legend()
-ax3.grid(True, axis='y', linestyle='--', alpha=0.4)
+ax3.grid(True, axis="y", linestyle="--", alpha=0.4)
 
 # ---------------------------------------------------------
 # PLOT 4 (Empty)
 # ---------------------------------------------------------
-ax4.text(0.5, 0.5, "Empty for now", ha='center', va='center', fontsize=20, color='gray')
-ax4.axis('off')
+# ax4.text(0.5, 0.5, "Empty for now", ha="center", va="center", fontsize=20, color="gray")
+ax4.axis("off")
 
 
 # Slider and Play Button
-ax_slider = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor='lightgoldenrodyellow')
-slider = Slider(ax_slider, 'Segment (t)', 1, T_actual, valinit=T_actual, valstep=1)
+ax_slider = plt.axes([0.15, 0.05, 0.65, 0.03], facecolor="lightgoldenrodyellow")
+slider = Slider(ax_slider, "Segment (t)", 1, T_actual, valinit=T_actual, valstep=1)
 
 # Add vertical traits for each segment
 for i in np.arange(1, T_actual + 1):
-    ax_slider.axvline(i, color='black', linewidth=0.8, alpha=0.4, zorder=1)
+    ax_slider.axvline(i, color="black", linewidth=0.8, alpha=0.4, zorder=1)
 
-ax_slider.set_xticks([]) # Ensure default x-ticks are hidden
+ax_slider.set_xticks([])  # Ensure default x-ticks are hidden
 
 # Add labels for lifetime info below the slider
 ax_lifetime = plt.axes([0.15, 0.015, 0.65, 0.03])
-ax_lifetime.axis('off')
-txt_elapsed = ax_lifetime.text(0.0, 0.5, '', transform=ax_lifetime.transAxes, ha='left', va='center', fontsize=10)
-txt_remaining = ax_lifetime.text(1.0, 0.5, '', transform=ax_lifetime.transAxes, ha='right', va='center', fontsize=10)
+ax_lifetime.axis("off")
+txt_elapsed = ax_lifetime.text(
+    0.0, 0.5, "", transform=ax_lifetime.transAxes, ha="left", va="center", fontsize=10
+)
+txt_remaining = ax_lifetime.text(
+    1.0, 0.5, "", transform=ax_lifetime.transAxes, ha="right", va="center", fontsize=10
+)
 
 ax_play = plt.axes([0.85, 0.05, 0.08, 0.03])
-btn_play = Button(ax_play, 'Play')
+btn_play = Button(ax_play, "Play")
 
 anim_running = False
 anim = None
+
 
 def animate(frame):
     current_val = int(slider.val)
@@ -199,69 +252,85 @@ def animate(frame):
         if anim_running:
             toggle_anim(None)
 
+
 def toggle_anim(event):
     global anim_running, anim
     if anim_running:
         if anim is not None:
             anim.event_source.stop()
         anim_running = False
-        btn_play.label.set_text('Play')
+        btn_play.label.set_text("Play")
     else:
         # If at the end, restart from 1
         if int(slider.val) == T_actual:
             slider.set_val(1)
-        
+
         if anim is None:
             anim = FuncAnimation(fig, animate, interval=500, cache_frame_data=False)
         else:
             anim.event_source.start()
         anim_running = True
-        btn_play.label.set_text('Pause')
+        btn_play.label.set_text("Pause")
     fig.canvas.draw_idle()
 
+
 btn_play.on_clicked(toggle_anim)
+
 
 def update(val):
     global fill_ci, fill_ci_vspan
     t = int(slider.val)
     current_idx = t - 1
-    
+
     # Update Lifetime sub-labels
     elapsed_hours = t * 6
     e_days = elapsed_hours // 24
     e_hours = elapsed_hours % 24
-    
+
     # Using true value for remaining time
     rem_hours = float(true_remaining[current_idx]) * 6
     r_days = int(rem_hours // 24)
     r_hours = int(rem_hours % 24)
-    
+
     slider.valtext.set_text(f"{t}")
     txt_elapsed.set_text(f"Elapsed adult lifetime: {e_days}d {e_hours}h")
     txt_remaining.set_text(f"Remaining lifetime: {r_days}d {r_hours}h")
-    
+
     # Update Colorbar label
-    cbar.set_ticklabels(['t=0', f't={t}'])
+    cbar.set_ticklabels(["t=0", f"t={t}"])
 
     # Update Plot 1
     line_true.set_data(steps[:t], true_remaining[:t])
     line_pred.set_data(steps[:t], predictions[:t])
-    
-    if fill_ci is not None:
-        fill_ci.remove()
-    std_dev = np.sqrt(variances[:t])
-    fill_ci = ax1.fill_between(steps[:t], predictions[:t] - 1.96 * std_dev, predictions[:t] + 1.96 * std_dev, color='red', alpha=0.2)
-    
+
+    if has_variances:
+        if fill_ci is not None:
+            fill_ci.remove()
+        std_dev = np.sqrt(variances[:t])
+        fill_ci = ax1.fill_between(
+            steps[:t],
+            predictions[:t] - 1.96 * std_dev,
+            predictions[:t] + 1.96 * std_dev,
+            color="red",
+            alpha=0.2,
+        )
+
     current_pred_total = t + predictions[current_idx]
     current_true_total = t + true_remaining[current_idx]
     vline_pred.set_xdata([current_pred_total, current_pred_total])
     vline_true.set_xdata([current_true_total, current_true_total])
-    
-    if fill_ci_vspan is not None:
-        fill_ci_vspan.remove()
-    std_dev_current = np.sqrt(variances[current_idx])
-    fill_ci_vspan = ax1.axvspan(current_pred_total - 1.96 * std_dev_current, current_pred_total + 1.96 * std_dev_current, color='red', alpha=0.1)
-    
+
+    if has_variances:
+        if fill_ci_vspan is not None:
+            fill_ci_vspan.remove()
+        std_dev_current = np.sqrt(variances[current_idx])
+        fill_ci_vspan = ax1.axvspan(
+            current_pred_total - 1.96 * std_dev_current,
+            current_pred_total + 1.96 * std_dev_current,
+            color="red",
+            alpha=0.1,
+        )
+
     # Update Plot 2
     for i in range(T_actual):
         if i < t:
@@ -271,23 +340,22 @@ def update(val):
                 traj_lines[i].set_color(cmap(1.0))
                 traj_lines[i].set_linewidth(3.5)
                 traj_lines[i].set_alpha(1.0)
-                traj_lines[i].set_zorder(10) # Bring to absolute front
+                traj_lines[i].set_zorder(10)  # Bring to absolute front
 
             else:
                 # Draw past segments fainter
-                color_val = (i / max(1, t - 1)) * 0.85 
+                color_val = (i / max(1, t - 1)) * 0.85
                 traj_lines[i].set_color(cmap(color_val))
                 traj_lines[i].set_linewidth(1.5)
                 traj_lines[i].set_alpha(0.5)
-                traj_lines[i].set_zorder(2) # Send to back
+                traj_lines[i].set_zorder(2)  # Send to back
         else:
             traj_lines[i].set_visible(False)
-            
-            
+
     # Update Plot 3
     s_W = np.atleast_1d(s_weights_cpu[current_idx])
     v_W = np.atleast_2d(v_weights_cpu[current_idx])
-    
+
     bottom = np.zeros(T_actual)
     for i, container in enumerate(bar_containers):
         if t <= len(s_W) and t <= len(v_W):
@@ -297,20 +365,20 @@ def update(val):
             contribution = np.zeros(t)
             min_len = min(len(s_W), len(v_W), t)
             contribution[:min_len] = s_W[:min_len] * v_W[:min_len, i]
-            
+
         for j, patch in enumerate(container.patches):
             if j < len(contribution):
                 patch.set_height(contribution[j])
-                patch.set_y(bottom[j]) # Apply stacked bottom
+                patch.set_y(bottom[j])  # Apply stacked bottom
                 bottom[j] += contribution[j]
             else:
                 patch.set_height(0)
-    
+
     fig.canvas.draw_idle()
+
 
 # Initialize the plot with the max time
 update(T_actual)
 slider.on_changed(update)
 
 plt.show()
-
