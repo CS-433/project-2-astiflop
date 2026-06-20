@@ -1,0 +1,286 @@
+/* Slidev auto-loads this file from styles/index.css — do not set css: in frontmatter */
+
+:root {
+  --accent: #3b82f6;
+  --accent-soft: #93c5fd;
+  --text-primary: #1e293b;
+  --text-muted: #64748b;
+  --card-bg: rgba(255, 255, 255, 0.72);
+  --card-border: rgba(255, 255, 255, 0.9);
+  --shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.slidev-layout {
+  background: var(--slide-bg, linear-gradient(145deg, #f8fafc 0%, #eef2ff 50%, #e0e7ff 100%)) !important;
+  color: var(--text-primary);
+  transition: background 0.6s ease;
+}
+
+h1, h2, h3 {
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: 2.25rem !important;
+  line-height: 1.15 !important;
+}
+
+h2 {
+  font-size: 1.35rem !important;
+  color: var(--accent) !important;
+  font-weight: 600 !important;
+}
+
+p, li {
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--card-border);
+  border-radius: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.gradient-pill {
+  display: inline-block;
+  padding: 0.35rem 1rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.pipeline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.pipeline-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  min-width: 110px;
+  max-width: 130px;
+  transition: all 0.4s ease;
+}
+
+.pipeline-step.active {
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  transform: scale(1.03);
+}
+
+.pipeline-arrow {
+  font-size: 1.25rem;
+  color: var(--accent);
+  opacity: 0.5;
+  padding: 0 0.15rem;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.metric-card {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  text-align: center;
+}
+
+.metric-card .value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.metric-card .label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.slide-bg-1 { --slide-bg: linear-gradient(145deg, #f8fafc 0%, #eef2ff 45%, #e0e7ff 100%); }
+.slide-bg-2 { --slide-bg: linear-gradient(145deg, #f8fafc 0%, #ecfdf5 40%, #d1fae5 100%); }
+.slide-bg-3 { --slide-bg: linear-gradient(145deg, #fafafa 0%, #f0f9ff 45%, #e0f2fe 100%); }
+.slide-bg-4 { --slide-bg: linear-gradient(145deg, #faf5ff 0%, #f3e8ff 45%, #ede9fe 100%); }
+.slide-bg-5 { --slide-bg: linear-gradient(145deg, #fff7ed 0%, #ffedd5 40%, #fed7aa 100%); }
+.slide-bg-6 { --slide-bg: linear-gradient(145deg, #f0fdfa 0%, #ccfbf1 45%, #99f6e4 100%); }
+
+.slide-bg-cover {
+  --slide-bg: linear-gradient(160deg, #0f172a 0%, #1e3a5f 35%, #312e81 70%, #4c1d95 100%);
+}
+
+.slide-bg-cover h1,
+.slide-bg-cover h2,
+.slide-bg-cover p,
+.slide-bg-cover .subtitle {
+  color: #f8fafc !important;
+}
+
+.slide-bg-cover .subtitle {
+  opacity: 0.85;
+}
+
+.slide-bg-cover .gradient-pill {
+  background: rgba(255, 255, 255, 0.15);
+  color: #e0e7ff;
+}
+
+.staircase-viz {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 140px;
+  padding: 1rem;
+  background: var(--card-bg);
+  border-radius: 0.875rem;
+  border: 1px solid var(--card-border);
+}
+
+.stair-step {
+  flex: 1;
+  background: linear-gradient(180deg, #3b82f6, #1d4ed8);
+  border-radius: 3px 3px 0 0;
+  min-width: 8px;
+}
+
+.attention-demo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: center;
+}
+
+.attention-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 100px;
+}
+
+.attention-bar {
+  flex: 1;
+  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  border-radius: 2px 2px 0 0;
+  min-height: 8px;
+}
+
+.attention-bar.low-move {
+  background: linear-gradient(180deg, #f87171, #dc2626);
+}
+
+.conclusion-list li {
+  margin-bottom: 0.5rem;
+}
+
+/* Hide dev-only goto overlay from the slide canvas */
+#slidev-goto-dialog {
+  display: none !important;
+}
+
+table {
+  font-size: 0.85rem;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.notebook-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, #1e293b, #334155);
+  color: #f8fafc;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid #475569;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  width: fit-content;
+}
+
+.notebook-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+}
+
+.code-sm :deep(pre),
+.code-sm :deep(code) {
+  font-size: 0.68rem !important;
+  line-height: 1.45 !important;
+}
+
+.code-sm :deep(pre) {
+  margin: 0 !important;
+  padding: 0.5rem 0.75rem !important;
+}
+
+.slidev-layout.slide-feature-extract,
+.slidev-layout.slide-attention-extract {
+  justify-content: flex-start !important;
+  padding-top: 1rem !important;
+  padding-bottom: 0.25rem !important;
+}
+
+.slidev-layout.slide-feature-extract h1,
+.slidev-layout.slide-attention-extract h1 {
+  margin-bottom: 0 !important;
+  font-size: 1.85rem !important;
+}
+
+.slidev-layout.slide-feature-extract h2,
+.slidev-layout.slide-attention-extract h2 {
+  margin-top: 0 !important;
+  margin-bottom: 0.15rem !important;
+  font-size: 1.1rem !important;
+}
+
+.feat-slide-grid {
+  margin-top: 0 !important;
+}
+
+.feat-diagram-col {
+  margin-top: -2.5rem;
+  align-self: start;
+}
+
+.slidev-layout.slide-code-sm :deep(pre),
+.slidev-layout.slide-code-sm :deep(code) {
+  font-size: 0.68rem !important;
+  line-height: 1.45 !important;
+}
+
+.slidev-layout.slide-feature-extract :deep(pre),
+.slidev-layout.slide-attention-extract :deep(pre) {
+  margin-top: 0.2rem !important;
+  padding: 0.35rem 0.65rem !important;
+}
