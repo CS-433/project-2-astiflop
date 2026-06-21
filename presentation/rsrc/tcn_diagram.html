@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCN Receptive Field Diagram</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        #root {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f5f5f5;
+        }
+
+        .flex {
+            display: flex;
+        }
+
+        .justify-center {
+            justify-content: center;
+        }
+
+        .items-center {
+            align-items: center;
+        }
+
+        .h-screen {
+            height: 100vh;
+        }
+
+        .bg-white {
+            background-color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+    <script>
+        const TCN_Receptive_Field_Diagram = () => {
+            const svgRef = React.useRef(null);
+
+            React.useEffect(() => {
+                if (!svgRef.current) return;
+
+                const width = 1200;
+                const height = 600;
+                const margin = { top: 100, right: 200, bottom: 100, left: 100 };
+                const innerWidth = width - margin.left - margin.right;
+                const innerHeight = height - margin.top - margin.bottom;
+
+                const svg = d3.select(svgRef.current);
+                svg.selectAll("*").remove(); // Clear previous render
+
+                const g = svg.append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                // --- Parameters ---
+                const kernelSize = 5;
+                const numLevels = 5;
+                const sequenceLength = 25; // Reduced sequence length for clarity
+                const dilations = Array.from({ length: numLevels }, (_, i) => Math.pow(2, i));
+
+                const layerHeight = innerHeight / (numLevels + 2); // +2 for input and output areas
+                const nodeWidth = innerWidth / sequenceLength;
+                const nodeHeight = layerHeight * 0.6;
+                const nodeSpacing = (layerHeight - nodeHeight) / 2;
+
+                // --- Data Generation ---
+                const layersData = [];
+                for (let l = 0; l < numLevels; l++) {
+                    const layerNodes = [];
+                    for (let t = 0; t < sequenceLength; t++) {
+                        layerNodes.push({
+                            level: l,
+                            time: t,
+                            x: t * nodeWidth,
+                            y: innerHeight - (l + 1) * layerHeight - nodeSpacing,
+                            id: `L${l}T${t}`,
+                            receptiveField: [] // To store input nodes
+                        });
+                    }
+                    layersData.push(layerNodes);
+                }
+
+                // --- Calculate Receptive Fields ---
+                // Base case: Level 0 depends on its own time step in the input
+                layersData[0].forEach(node => node.receptiveField.push(node.time));
+
+                for (let l = 1; l < numLevels; l++) {
+                    const dilation = dilations[l - 1]; // Dilation of the connections *from* the previous layer
+                    layersData[l].forEach(node => {
+                        const t = node.time;
+                        for (let k = 0; k < kernelSize; k++) {
+                            const prevTime = t - k * dilation;
+                            if (prevTime >= 0) {
+                                // Add unique input dependencies from the previous layer's node
+                                layersData[l - 1][prevTime].receptiveField.forEach(inputTime => {
+                                    if (!node.receptiveField.includes(inputTime)) {
+                                        node.receptiveField.push(inputTime);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }
+
+                // --- Visual Elements ---
+
+                // Input Layer
+                const inputLayerY = innerHeight - nodeSpacing;
+                g.append("rect")
+                    .attr("x", -margin.left * 0.2)
+                    .attr("y", inputLayerY)
+                    .attr("width", innerWidth + margin.left * 0.4)
+                    .attr("height", nodeHeight)
+                    .attr("fill", "#F3E5F5") // Light purple/pink for input
+                    .attr("rx", 5);
+
+
+                // // Output Layers (Linear & Sigmoid)
+                const linearLayerY = nodeSpacing;
+                g.append("rect")
+                    .attr("x", -margin.left * 0.2)
+                    .attr("y", linearLayerY)
+                    .attr("width", innerWidth + margin.left * 0.4)
+                    .attr("height", nodeHeight)
+                    .attr("fill", "#E8F5E9") // Light green for linear output
+                    .attr("rx", 5);
+                // g.append("text")
+                //     .attr("x", innerWidth + 20)
+                //     .attr("y", linearLayerY + nodeHeight / 2 + 5)
+                //     .attr("font-size", "14px")
+                //     .attr("font-weight", "bold")
+                //     .text("Linear");
+
+                // const sigmoidSize = nodeHeight * 1.2;
+                // const sigmoidY = linearLayerY - sigmoidSize - 20;
+                // g.append("rect")
+                //     .attr("x", innerWidth - sigmoidSize * 2)
+                //     .attr("y", sigmoidY)
+                //     .attr("width", sigmoidSize)
+                //     .attr("height", sigmoidSize)
+                //     .attr("fill", "#FFECB3") // Light orange/yellow for sigmoid
+                //     .attr("rx", 5);
+                // g.append("text")
+                //     .attr("x", innerWidth + 20)
+                //     .attr("y", sigmoidY + sigmoidSize / 2 + 5)
+                //     .attr("font-size", "12px")
+                //     .text("Sigmoid (only for Binary Cls.)");
+                // g.append("line")
+                //     .attr("x1", innerWidth - sigmoidSize * 1.5)
+                //     .attr("y1", linearLayerY)
+                //     .attr("x2", innerWidth - sigmoidSize * 1.5)
+                //     .attr("y2", sigmoidY + sigmoidSize)
+                //     .attr("stroke", "black")
+                //     .attr("stroke-width", 2);
+
+                // const finalOutputY = sigmoidY - sigmoidSize - 20;
+                // g.append("rect")
+                //     .attr("x", innerWidth - sigmoidSize * 2)
+                //     .attr("y", finalOutputY)
+                //     .attr("width", sigmoidSize)
+                //     .attr("height", sigmoidSize)
+                //     .attr("fill", "#FFECB3") // Light orange/yellow for final output
+                //     .attr("rx", 5);
+                // g.append("text")
+                //     .attr("x", innerWidth + 20)
+                //     .attr("y", finalOutputY + sigmoidSize / 2 + 5)
+                //     .attr("font-size", "14px")
+                //     .attr("font-weight", "bold")
+                //     .text("Output");
+                // g.append("line")
+                //     .attr("x1", innerWidth - sigmoidSize * 1.5)
+                //     .attr("y1", sigmoidY)
+                //     .attr("x2", innerWidth - sigmoidSize * 1.5)
+                //     .attr("y2", finalOutputY + sigmoidSize)
+                //     .attr("stroke", "black")
+                //     .attr("stroke-width", 2);
+
+                // // Dotted line from linear output
+                // g.append("path")
+                //     .attr("d", d3.line()([[innerWidth, linearLayerY + nodeHeight], [innerWidth + 30, linearLayerY + nodeHeight], [innerWidth + 30, finalOutputY + sigmoidSize / 2], [innerWidth, finalOutputY + sigmoidSize / 2]]))
+                //     .attr("stroke", "black")
+                //     .attr("stroke-width", 2)
+                //     .attr("stroke-dasharray", "5,5")
+                //     .attr("fill", "none");
+
+
+                // TCN Layers
+                layersData.forEach((layer, l) => {
+                    const layerGroup = g.append("g").attr("class", `layer-${l}`);
+
+                    // Layer Label
+                    let label = "";
+                    if (l === 0) label = "Input TCN Layer";
+                    else if (l === numLevels - 1) label = "Last TCN Layer";
+                    else label = `Hidden Layer ${l}`;
+                    g.append("text")
+                        .attr("x", innerWidth + 20)
+                        .attr("y", layer[0].y + nodeHeight / 2 + 5)
+                        .attr("font-size", "14px")
+                        .attr("font-weight", "bold")
+                        .text(label);
+
+                    // Dilation Label
+                    if (l < numLevels - 1) {
+                        g.append("text")
+                            .attr("x", innerWidth + 20)
+                            .attr("y", layer[0].y - layerHeight / 2 + 5)
+                            .attr("font-size", "12px")
+                            .text(`Dilation = ${dilations[l]}`);
+                    }
+
+                    // Nodes
+                    layerGroup.selectAll("rect")
+                        .data(layer)
+                        .enter()
+                        .append("rect")
+                        .attr("x", d => d.x)
+                        .attr("y", d => d.y)
+                        .attr("width", nodeWidth * 0.9)
+                        .attr("height", nodeHeight)
+                        .attr("fill", "#64B5F6") // Light blue for TCN layers
+                        .attr("stroke", "#1976D2")
+                        .attr("class", d => `node-${d.id} tcn-node`)
+                        .on("mouseover", function (event, d) {
+                            if (l > 0) { // Enable hover for all layers except input layer (l=0)
+                                // Highlight receptive field
+                                d3.select(this).attr("fill", "#FFD54F"); // Highlight hovered node
+                                d.receptiveField.forEach(inputTime => {
+                                    d3.select(`.input-node-${inputTime}`).attr("fill", "#FFD54F");
+                                });
+                                // Show connections
+                                d3.selectAll(`.connection-to-${d.id}`).attr("opacity", 1).attr("stroke-width", 2);
+                            }
+                        })
+                        .on("mouseout", function (event, d) {
+                            if (l > 0) { // Enable hover for all layers except input layer (l=0)
+                                d3.select(this).attr("fill", "#64B5F6"); // Reset hovered node
+                                d.receptiveField.forEach(inputTime => {
+                                    d3.select(`.input-node-${inputTime}`).attr("fill", "#E0E0E0");
+                                });
+                                // Hide connections
+                                d3.selectAll(`.connection-to-${d.id}`).attr("opacity", 0.1).attr("stroke-width", 1);
+                            }
+                        });
+                });
+
+                // Input Nodes (for highlighting)
+                const inputNodesGroup = g.append("g").attr("class", "input-nodes");
+                for (let t = 0; t < sequenceLength; t++) {
+                    inputNodesGroup.append("rect")
+                        .attr("x", t * nodeWidth)
+                        .attr("y", inputLayerY)
+                        .attr("width", nodeWidth * 0.9)
+                        .attr("height", nodeHeight)
+                        .attr("fill", "#E0E0E0") // Grey for input nodes
+                        .attr("stroke", "#BDBDBD")
+                        .attr("class", `input-node-${t} input-node`);
+                }
+
+                // Connections
+                layersData.forEach((layer, l) => {
+                    if (l < numLevels - 1) {
+                        const dilation = dilations[l];
+                        const nextLayer = layersData[l + 1];
+                        nextLayer.forEach(nextNode => {
+                            const t = nextNode.time;
+                            for (let k = 0; k < kernelSize; k++) {
+                                const prevTime = t - k * dilation;
+                                if (prevTime >= 0) {
+                                    const prevNode = layer[prevTime];
+                                    g.append("line")
+                                        .attr("x1", prevNode.x + nodeWidth * 0.45)
+                                        .attr("y1", prevNode.y)
+                                        .attr("x2", nextNode.x + nodeWidth * 0.45)
+                                        .attr("y2", nextNode.y + nodeHeight)
+                                        .attr("stroke", "#E53935") // Red for connections
+                                        .attr("stroke-width", 1)
+                                        .attr("opacity", 0.1) // Hidden by default
+                                        .attr("class", `connection connection-to-${nextNode.id}`);
+                                }
+                            }
+                        });
+                    }
+                });
+
+                // Connections from Last TCN to Linear
+                const lastLayer = layersData[numLevels - 1];
+                lastLayer.forEach(node => {
+                    g.append("line")
+                        .attr("x1", node.x + nodeWidth * 0.45)
+                        .attr("y1", node.y)
+                        .attr("x2", node.x + nodeWidth * 0.45) // Connects to corresponding position in linear
+                        .attr("y2", linearLayerY + nodeHeight)
+                        .attr("stroke", "black")
+                        .attr("stroke-width", 1)
+                        .attr("opacity", 0.3);
+                })
+
+                // Kernel Size Indicator
+                const kernelIndicatorY = layersData[0][0].y + nodeHeight + 24;
+                const kernelIndicatorX = (sequenceLength - kernelSize) / 2 * nodeWidth;
+                const kernelIndicatorWidth = kernelSize * nodeWidth * 0.9 + (kernelSize - 1) * (nodeWidth * 0.1);
+
+                g.append("rect")
+                    .attr("x", kernelIndicatorX)
+                    .attr("y", kernelIndicatorY)
+                    .attr("width", kernelIndicatorWidth)
+                    .attr("height", nodeHeight)
+                    .attr("fill", "none")
+                    .attr("stroke", "#E53935")
+                    .attr("stroke-width", 2)
+                    .attr("stroke-dasharray", "5,5");
+
+                g.append("text")
+                    .attr("x", kernelIndicatorX + kernelIndicatorWidth / 2)
+                    .attr("y", kernelIndicatorY + nodeHeight + 20)
+                    .attr("text-anchor", "middle")
+                    .attr("font-size", "14px")
+                    .attr("fill", "#E53935")
+                    .attr("font-weight", "bold")
+                    .text(`Kernel size = ${kernelSize}`);
+
+                // Arrow for sliding kernel
+                g.append("line")
+                    .attr("x1", kernelIndicatorX + kernelIndicatorWidth + 10)
+                    .attr("y1", kernelIndicatorY + nodeHeight / 2)
+                    .attr("x2", kernelIndicatorX + kernelIndicatorWidth + 40)
+                    .attr("y2", kernelIndicatorY + nodeHeight / 2)
+                    .attr("stroke", "#E53935")
+                    .attr("stroke-width", 4)
+                    .attr("marker-end", "url(#arrow)");
+
+                // Define arrow marker
+                svg.append("defs").append("marker")
+                    .attr("id", "arrow")
+                    .attr("viewBox", "0 0 10 10")
+                    .attr("refX", 5)
+                    .attr("refY", 5)
+                    .attr("markerWidth", 6)
+                    .attr("markerHeight", 6)
+                    .attr("orient", "auto-start-reverse")
+                    .append("path")
+                    .attr("d", "M 0 0 L 10 5 L 0 10 z")
+                    .attr("fill", "#E53935");
+
+            }, []);
+
+            return (
+                React.createElement('div', {
+                    className: 'flex justify-center items-center h-screen bg-white'
+                },
+                    React.createElement('svg', {
+                        ref: svgRef,
+                        width: 1200,
+                        height: 700
+                    })
+                )
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(TCN_Receptive_Field_Diagram));
+    </script>
+</body>
+
+</html>

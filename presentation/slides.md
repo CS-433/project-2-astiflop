@@ -557,7 +557,7 @@ class: slide-bg-4
 
 # Visualization
 
-<div class="flex items-center justify-center h-full">
+<div class="flex items-center justify-center pt-2">
   <img src="./rsrc/visualization.png" alt="Segment attention visualization" class="max-h-[60vh] w-auto shadow-lg rounded-lg" />
 </div>
 
@@ -575,14 +575,23 @@ class: slide-bg-5
 <div class="text-left">
 
 
-**Key finding:** The model assigns **higher attention** to segments where the worm **moves less** — periods of reduced locomotion correlate with aging phenotypes.
-
+**Key finding:** 
 
 <v-click>
 
-- Speed is the main attended variate
-- The prediction declines after several low-speed "sentinel" segments
-- Low-speed segments → higher segment attention weights
+- Speed is the main attended variate  
+
+</v-click>
+
+<v-click>
+
+- The prediction tilts downward after several low-speed "sentinel" segments  
+
+</v-click>
+
+<v-click>
+
+- Low-speed segments have higher attention weights  
 
 </v-click>
 
@@ -613,12 +622,26 @@ class: slide-bg-6
 
 <div class="conclusion-list text-left max-w-3xl mx-auto mt-6 text-lg">
 
-1. traj signaux de fin de vie dedans 2. approach foundation model a décisive 3. architecture/model agnostic
+<v-click>
+
+- Remaining lifespan can be predicted from raw trajectories only
+
+</v-click>
+
+<v-click>
+
+- The lifespan data is rich enough to be predicted agnostically of the model architecture
+
+</v-click>
+
+<v-click>
+
+- Achieving predictions given the dataset size shows the importance of a foundation model approach
+
+</v-click>
+
 </div>
 
-<div v-click class="glass-card p-4 mt-8 max-w-2xl mx-auto text-sm">
-
-</div>
 
 ---
 layout: center
@@ -627,7 +650,7 @@ class: slide-bg-cover text-center
 
 <!-- Slide 14 — Thanks -->
 
-# Thank you for you attention !
+# Thank you for you attention!
 
 <div class="subtitle text-2xl mt-4 font-normal opacity-90">
   Any questions?

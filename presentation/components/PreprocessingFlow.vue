@@ -15,20 +15,20 @@ const steps = [
     title: 'Tracking CSV',
     desc: 'X, Y coordinates + timestamps per worm',
   },
+    {
+    icon: '📐',
+    title: 'Segmentation',
+    desc: '900-frame sessions + Lifetime index',
+  },
   {
     icon: '🧹',
     title: 'Cleaning',
     desc: 'Remove jumps, stitch trajectories, crop death',
   },
   {
-    icon: '📐',
-    title: 'Segmentation',
-    desc: '900-frame sessions + Lifetime index',
-  },
-  {
     icon: '⚡',
     title: 'Features',
-    desc: 'Speed, turning rate, normalized coords',
+    desc: 'Speed, turning rate, normalized',
   },
 ]
 
