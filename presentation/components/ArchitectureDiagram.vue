@@ -80,7 +80,7 @@ defineProps<{
       </div>
     </div>
     <div class="shared-output glass-card">
-      <strong>Shared downstream:</strong> Segment attention → MLP regressor → remaining lifespan prediction
+      <strong>Final Steps:</strong> Segment attention → MLP regressor → remaining lifespan prediction
     </div>
   </div>
 </template>

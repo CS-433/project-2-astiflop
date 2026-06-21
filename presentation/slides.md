@@ -326,7 +326,7 @@ class: slide-bg-2
 # Training Specificities
 <div v-click="1">
 
-## 1. Worm level Validation split
+## 1. Worm level validation split
 </div>
 <div v-click="2">
 
@@ -334,11 +334,15 @@ class: slide-bg-2
 </div>
 <div v-click="3">
 
-## 3. Staircase Sampling
+## 3. Staircase sampling
 </div>
 <div v-click="4">
 
-## 4. Scalar vs Distribution prediction
+## 4. Scalar vs. distribution prediction
+</div>
+<div v-click="4">
+
+## 5. Training objective
 </div>
 
 ::right::
@@ -388,12 +392,23 @@ Segments 1–T     → predict remaining
   <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
     <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">4</div>
     <div>
-      <div class="font-semibold mb-1">Predicting gaussian parameters</div>
+      <div class="font-semibold mb-1">Predicting distribution parameters</div>
       <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
 Several options have been explored:
 - Direct scalar prediction
 - Gaussian distribution
 - Weibull distribution
+      </pre>
+    </div>
+  </div>
+</div>
+<div v-click="5">
+  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
+    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">4</div>
+    <div>
+      <div class="font-semibold mb-1">Training objective</div>
+      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
+Instead of trying to predict directly the full lifespan, the model is only trained to predict the correct value on the last 50 segments. 
       </pre>
     </div>
   </div>
@@ -519,7 +534,7 @@ class: slide-bg-3
 <div class="grid grid-cols-3 gap-3 mt-3 text-xs text-left">
 
 <div class="glass-card p-2">
-  <strong>Best ML model:</strong> TCN 5k steps, with MAE of ~10 segments, corresponding to ~1 day. 
+  <strong>Best ML model:</strong> TCN 5k steps, with MAE of ~10 segments, corresponding to ~2.5 day. In the dataset, the interval is from 10 to 37 days, with the mean at 15.  
 </div>
 
 <div class="glass-card p-2">
@@ -527,7 +542,7 @@ class: slide-bg-3
 </div>
 
 <div class="glass-card p-2">
-  The <strong>Weibull distribution</strong> is a good help for the models.
+  The <strong>Weibull distribution</strong> has been the breakthrough needed to get to the 95% Confidence Interval.
 </div>
 
 </div>
