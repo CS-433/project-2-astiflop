@@ -404,11 +404,12 @@ Several options have been explored:
 </div>
 <div v-click="5">
   <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
-    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">4</div>
+    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">5</div>
     <div>
       <div class="font-semibold mb-1">Training objective</div>
       <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
-Instead of trying to predict directly the full lifespan, the model is only trained to predict the correct value on the last 50 segments. 
+Instead of trying to predict directly the full lifespan, the model 
+is only trained to predict the correct value on the last 50 segments. 
       </pre>
     </div>
   </div>
@@ -612,7 +613,7 @@ class: slide-bg-6
 
 <div class="conclusion-list text-left max-w-3xl mx-auto mt-6 text-lg">
 
-
+1. traj signaux de fin de vie dedans 2. approach foundation model a décisive 3. architecture/model agnostic
 </div>
 
 <div v-click class="glass-card p-4 mt-8 max-w-2xl mx-auto text-sm">
