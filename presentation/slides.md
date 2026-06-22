@@ -318,7 +318,7 @@ class: slide-bg-1
 ---
 layout: two-cols
 layoutClass: gap-6
-class: slide-bg-2
+class: slide-bg-2 slide-training
 ---
 
 <!-- Slide 9 — Staircase training -->
@@ -347,70 +347,61 @@ class: slide-bg-2
 
 ::right::
 <div v-click="1">
-  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
-    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">1</div>
+  <div class="glass-card training-card">
+    <div class="card-num">1</div>
     <div>
-      <div class="font-semibold mb-1">Preventing data leakage</div>
-      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
-All segments related to a worm are in one of the split
-      </pre>
+      <div class="training-card-title">Preventing data leakage</div>
+      <pre class="training-card-body">All segments related to a worm are in one of the split</pre>
     </div>
   </div>
 </div>
 
 <div v-click="2">
-  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
-    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center ">2</div>
+  <div class="glass-card training-card">
+    <div class="card-num">2</div>
     <div>
-      <div class="font-semibold mb-1">From 1 trajectory, create 5 differents</div>
-      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
-A tool against overfittings:
+      <div class="training-card-title">From 1 trajectory, create 5 differents</div>
+      <pre class="training-card-body">A tool against overfittings:
 - Scaling
 - Rotation
-- Offsets
-      </pre>
+- Offsets</pre>
     </div>
   </div>
 </div>
 
 <div v-click="3">
-  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
-    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">3</div>
+  <div class="glass-card training-card">
+    <div class="card-num">3</div>
     <div>
-      <div class="font-semibold mb-1">Sample <strong>prefixes</strong> of a worm's life:</div>
-      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
-Segment 1            → predict remaining
+      <div class="training-card-title">Sample <strong>prefixes</strong> of a worm's life:</div>
+      <pre class="training-card-body">Segment 1            → predict remaining
 Segments 1–2     → predict remaining
        ⋮
-Segments 1–T     → predict remaining
-      </pre>
+Segments 1–T     → predict remaining</pre>
     </div>
   </div>
 </div>
 
 <div v-click="4">
-  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
-    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">4</div>
+  <div class="glass-card training-card">
+    <div class="card-num">4</div>
     <div>
-      <div class="font-semibold mb-1">Predicting distribution parameters</div>
-      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
-Several options have been explored:
+      <div class="training-card-title">Predicting distribution parameters</div>
+      <pre class="training-card-body">Several options have been explored:
 - Direct scalar prediction
 - Gaussian distribution
-- Weibull distribution
-      </pre>
+- Weibull distribution</pre>
     </div>
   </div>
 </div>
+
 <div v-click="5">
-  <div class="glass-card flex items-start gap-4 p-2 pb-0 mb-1">
-    <div class="card-num text-m font-bold bg-blue-900 text-white rounded-full w-6 h-6 flex items-center justify-center">5</div>
+  <div class="glass-card training-card">
+    <div class="card-num">5</div>
     <div>
-      <div class="font-semibold mb-1">Training objective</div>
-      <pre class="bg-transparent whitespace-pre mb-0 mt-0 p-0 text-xs" style="font-family: inherit;">
-Instead of trying to predict directly the full lifespan, the model 
-is only trained to predict the correct value on the last 50 segments. 
-      </pre>
+      <div class="training-card-title">Training objective</div>
+      <pre class="training-card-body">Instead of trying to predict directly the full lifespan, the model
+is only trained to predict the correct value on the last 50 segments.</pre>
     </div>
   </div>
 </div>
@@ -558,7 +549,7 @@ class: slide-bg-4
 # Visualization
 
 <div class="flex items-center justify-center pt-2">
-  <img src="./rsrc/visualization.png" alt="Segment attention visualization" class="max-h-[60vh] w-auto shadow-lg rounded-lg" />
+  <img src="./rsrc/visualization.png" alt="Segment attention visualization" class="max-h-[40vh] w-auto shadow-lg rounded-lg" />
 </div>
 
 ---
@@ -641,7 +632,6 @@ class: slide-bg-6
 </v-click>
 
 </div>
-
 
 ---
 layout: center
