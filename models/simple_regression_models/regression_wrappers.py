@@ -1,3 +1,59 @@
+"""
+Regression wrappers for the linear scalar baseline (``model_type="linear"``).
+
+Config format
+-------------
+    models_config = {
+        "<model_key>": {
+            "wrapper_class": LinearScalarRegressorWrapper,  # alias for TrainingWrapper
+            "params": { ... },
+        }
+    }
+
+Shared ``params`` (all wrappers — required to build/load the model)
+--------------------------------------------------------------------
+name                    str     Checkpoint filename prefix
+model_type              str     Must be ``"linear"``
+embed_dim               int     Embedding dimension after feature extraction
+segment_len             int     Input segment length (must match the dataset, e.g. 900)
+feature_extractor_layers int    Number of CNN feature-extractor layers (often 1)
+use_time_encoding       bool    Append sin/cos time encoding
+dropout                 float   Dropout rate (typically 0.0 for linear)
+loss                    str     ``"mse"`` | ``"mae"`` | ``"huber"`` (training only)
+device                  str     e.g. ``"cuda:0"``, ``"cpu"``
+
+Training-only ``params`` (``LinearScalarRegressorTrainingWrapper`` / ``LinearScalarRegressorWrapper``)
+------------------------------------------------------------------------------------------------------
+lr              float   Adam learning rate
+epochs          int     Maximum training epochs
+patience        int     Early-stopping patience (tracks validation MSE)
+batch_size      int     DataLoader batch size (read by ``training_pipeline``)
+
+``output_type`` is inferred from ``loss`` via ``resolve_output_type`` (point output
+for mse/mae/huber). Do not set ``output_type`` manually unless you extend the factory.
+
+Example::
+
+    {
+        "wrapper_class": LinearScalarRegressorWrapper,
+        "params": {
+            "name": "lin_sca_reg_64e_16bs_1fel_time",
+            "model_type": "linear",
+            "embed_dim": 64,
+            "feature_extractor_layers": 1,
+            "use_time_encoding": True,
+            "dropout": 0.0,
+            "loss": "mse",
+            "lr": 1e-3,
+            "patience": 10,
+            "epochs": 500,
+            "device": "cuda:0",
+            "batch_size": 16,
+            "segment_len": 900,
+        },
+    }
+"""
+
 import os
 import random
 import time
@@ -28,6 +84,13 @@ def _point_variances(preds, denormalized=False):
 
 
 class LinearScalarRegressorBenchmarkWrapper(BenchmarkWrapper):
+    """Benchmark a trained linear scalar regressor on full worm trajectories.
+
+    Required ``params``: ``name``, ``model_type`` (``"linear"``), ``embed_dim``,
+    ``segment_len``, ``feature_extractor_layers``, ``use_time_encoding``,
+    ``dropout``, ``loss``, ``device``.
+    """
+
     def load(self, path):
         device = self.params.get("device")
         self.model = load_regressor_checkpoint(self.params, path, device=device)
@@ -76,6 +139,14 @@ class LinearScalarRegressorBenchmarkWrapper(BenchmarkWrapper):
 
 
 class LinearScalarRegressorTrainingWrapper(TrainingWrapper):
+    """Train the linear scalar baseline with staircase sampling and early stopping.
+
+    Required ``params``: all shared keys above, plus ``lr``, ``epochs``,
+    ``patience``, ``device``, and ``batch_size`` (consumed by ``training_pipeline``).
+
+    Supported ``loss`` values: ``mse``, ``mae``, ``huber``.
+    """
+
     def _forward_pass(
         self,
         model,
@@ -240,6 +311,12 @@ class LinearScalarRegressorTrainingWrapper(TrainingWrapper):
 
 
 class LinearScalarRegressorVisualizationWrapper(VisualizationWrapper):
+    """Step-by-step trajectory visualization for the linear scalar regressor.
+
+    Required ``params``: same model-building keys as
+    ``LinearScalarRegressorBenchmarkWrapper``.
+    """
+
     def load(self, path):
         device = self.params.get(
             "device", "cuda" if torch.cuda.is_available() else "cpu"

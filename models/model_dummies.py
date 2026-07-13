@@ -1,3 +1,7 @@
+"""
+Dummy model wrappers for pipeline smoke tests.
+"""
+
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence

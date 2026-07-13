@@ -1,3 +1,81 @@
+"""
+Regression wrappers for CNN-attention architectures (TCN, BiLSTM, Transformer, etc.).
+
+Config format
+-------------
+Used by ``scripts/training_pipeline.py``, ``scripts/benchmark_pipeline.py``, and
+``scripts/visualization_pipeline.py``::
+
+    models_config = {
+        "<model_key>": {
+            "wrapper_class": RegressorTrainingWrapper,  # or Benchmark / Visualization
+            "params": { ... },
+        }
+    }
+
+Shared ``params`` (all wrappers — required to build/load the model via ``build_regressor``)
+------------------------------------------------------------------------------------------
+name                    str     Checkpoint filename prefix (training save & checkpoint lookup)
+model_type              str     ``"tcn"`` | ``"bilstm"`` | ``"rnn"`` | ``"transformer"`` | ``"mlp"`` | ``"hmm"``
+embed_dim               int     CNN embedding dimension
+segment_len             int     Input segment length (must match the dataset, e.g. 900)
+feature_extractor_layers int    Number of CNN feature-extractor layers
+use_time_encoding       bool    Append sin/cos time encoding to segment features
+dropout                 float   Dropout rate
+loss                    str     See loss options below
+device                  str     e.g. ``"cuda:0"``, ``"cpu"``
+
+``model_type``-specific ``params`` (all required when that type is selected)
+-----------------------------------------------------------------------------
+tcn:          kernel_size (int), num_levels (int), dropout_1d (bool)
+bilstm:       bilstm_layers (int)
+rnn:          rnn_layers (int)
+transformer:  transformer_layers (int), transformer_heads (int)
+hmm:          num_states (int)
+mlp:          (no extra keys beyond shared ``dropout``)
+
+Training-only ``params`` (``RegressorTrainingWrapper``)
+-------------------------------------------------------
+lr              float   Adam learning rate
+epochs          int     Maximum training epochs
+patience        int     Early-stopping patience (tracks validation MSE)
+batch_size      int     DataLoader batch size (read by ``training_pipeline``, not the wrapper)
+
+Loss options (``RegressorTrainingWrapper``)
+---------------------------------------------
+``"mse"`` | ``"mae"`` | ``"huber"`` | ``"nll"`` | ``"weibull"`` | ``"weibull_shifted"`` | ``"weibull_beta"``
+
+Optional loss-related keys:
+
+- ``weibull_offset`` (float, default 5.0) — for ``weibull_shifted``
+- ``weibull_penalty_weight`` (float, default 2.0) — for ``"weibull_beta"``
+- ``aux_beta`` or ``ortho_beta`` (float, default 0.01) — auxiliary-loss weight
+
+Example (TCN + Weibull)::
+
+    {
+        "wrapper_class": RegressorTrainingWrapper,
+        "params": {
+            "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15",
+            "model_type": "tcn",
+            "kernel_size": 5,
+            "num_levels": 5,
+            "dropout": 0.15,
+            "dropout_1d": False,
+            "embed_dim": 64,
+            "feature_extractor_layers": 3,
+            "use_time_encoding": True,
+            "loss": "weibull",
+            "lr": 5e-4,
+            "patience": 100,
+            "epochs": 500,
+            "device": "cuda:0",
+            "batch_size": 16,
+            "segment_len": 900,
+        },
+    }
+"""
+
 import os
 import random
 import time
@@ -90,6 +168,11 @@ def gaussian_nll_loss(mu, s, target):
 
 
 class RegressorBenchmarkWrapper(BenchmarkWrapper):
+    """
+    Benchmark a trained CNN-attention regressor on full worm trajectories.
+    Required ``params``: all shared model-building keys documented in this module's docstring.
+    """
+
     def load(self, path):
         device = self.params.get("device")
         self.model = load_regressor_checkpoint(self.params, path, device=device)
@@ -166,6 +249,18 @@ class RegressorBenchmarkWrapper(BenchmarkWrapper):
 
 
 class RegressorTrainingWrapper(TrainingWrapper):
+    """
+    Train a CNN-attention regressor with staircase sampling and early stopping.
+
+    Required ``params``: all shared and ``model_type``-specific keys from this
+    module's docstring, plus training keys: 
+    - ``lr``
+    - ``epochs``
+    - ``patience``
+    - ``device``
+    - ``batch_size`` 
+    """
+
     def _forward_pass(
         self,
         model,
@@ -386,6 +481,13 @@ class RegressorTrainingWrapper(TrainingWrapper):
 
 
 class RegressorVisualizationWrapper(VisualizationWrapper):
+    """
+    Step-by-step trajectory visualization for a CNN-attention regressor.
+
+    Required ``params``: same model-building keys as ``RegressorBenchmarkWrapper``.
+    /!\ *``loss`` must match the checkpoint's training configuration.* /!\
+    """
+
     def load(self, path):
         device = self.params.get(
             "device", "cuda" if torch.cuda.is_available() else "cpu"
