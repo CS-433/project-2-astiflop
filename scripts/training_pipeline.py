@@ -6,13 +6,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from sklearn.model_selection import GroupKFold
 from torch.utils.data import DataLoader, Subset
 
-from models.cnn_attention_models.regression_wrappers import RegressorTrainingWrapper
 from utils.plot_utils.presents_results import (
     calculate_average_results,
     plot_results,
     save_results_to_json,
 )
 from utils.train_utils.dataset import LPBSDataset
+
+from models.cnn_attention_models.regression_wrappers import RegressorTrainingWrapper
+from models.simple_regression_models.regression_wrappers import LinearScalarRegressorWrapper
 
 
 def train_models(
@@ -49,15 +51,14 @@ def train_models(
         print(f"\n\n=== Fold {fold_idx + 1} ===")
 
         # Instantiate fresh models for each fold
-        model_instances = {}
+        wrappers = {}
         for model_name, config in models_config.items():
-            model_cls = config["model_class"]
-            params = config.get("params", {})
-            model = model_cls(params)
-            model_instances[model_name] = model
+            params = config["params"]
+            wrapper = config["wrapper_class"](params)
+            wrappers[model_name] = wrapper
 
         # Train and evaluate each model
-        for model_name, model in model_instances.items():
+        for model_name, wrapper in wrappers.items():
             train_loader = DataLoader(
                 Subset(dataset, indices=worm_train_indices),
                 batch_size=models_config[model_name]["params"]["batch_size"],
@@ -69,7 +70,7 @@ def train_models(
                 shuffle=True,
             )
             print(f"Training model: {model_name}")
-            measures, _ = model.train_on_fold(train_loader, test_loader)
+            measures, _ = wrapper.train_on_fold(train_loader, test_loader)
 
             models_results[model_name][f"fold_{fold_idx}"] = measures
             print(f"Results for {model_name} fold {fold_idx + 1}: {measures}\n")
@@ -119,95 +120,52 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    device = "cuda:1"
+    device = "cuda"
     models_config = {
-        "tcn_gaussian": {
-            "model_class": RegressorTrainingWrapper,
+        # "linear_scalar_regressor": {
+        #     "wrapper_class": LinearScalarRegressorWrapper,
+        #     "params": {
+        #         "model_type": "linear",
+        #         "embed_dim": 64,
+        #         "feature_extractor_layers": 1,
+        #         "use_time_encoding": True,
+        #         "output_type": "point",
+        #         "device": device,
+        #     },
+        # },
+        "linear_scalar_regressor": {
+            "wrapper_class": LinearScalarRegressorWrapper,
             "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_gaus",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "dropout_1d": False,
-                "dropout": 0.15,
+                "name": "lin_sca_reg_16_1_time",
+
+                "model_type": "linear",
+                "embed_dim": 16,
+                "feature_extractor_layers": 1,
                 "use_time_encoding": True,
-                "loss": "nll",
-                "lr": 5e-4,
-                "patience": 100,
+                "output_type": "point",
+
+                "lr": 0.001,
+                "dropout": 0.0,
+                "loss": "mse",
                 "epochs": 500,
+                "patience": 10,
+
                 "device": device,
+                "batch_size": 32,
                 "segment_len": 900,
             },
         },
-        "tcn_shifted": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_shifted",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "use_time_encoding": True,
-                "loss": "weibull_shifted",
-                "weibull_offset": 10.0,
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "tcn_beta": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_beta",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 5,
-                "use_time_encoding": True,
-                "loss": "weibull_beta",
-                "weibull_penalty_weight": 2.0,
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "gaussian_weibull": {
-            "model_class": RegressorTrainingWrapper,
-            "params": {
-                "name": "gaussian_1l_64e_12bs_3fel_time_weibull",
-                "model_type": "gaussian",
-                "bilstm_layers": 1,
-                "embed_dim": 64,
-                "batch_size": 12,
-                "feature_extractor_layers": 3,
-                "dropout": 0.15,
-                "use_time_encoding": True,
-                "loss": "weibull",
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
+        # "linear_scalar_regressor": {
+        #     "wrapper_class": LinearScalarRegressorWrapper,
+        #     "params": {
+        #         "model_type": "linear",
+        #         "embed_dim": 32,
+        #         "feature_extractor_layers": 3,
+        #         "use_time_encoding": True,
+        #         "output_type": "point",
+        #         "device": device,
+        #     },
+        # },
     }
 
     results = train_models(

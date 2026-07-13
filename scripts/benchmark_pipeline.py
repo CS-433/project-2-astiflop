@@ -1,5 +1,4 @@
 import argparse
-import glob
 import os
 import shutil
 import sys
@@ -12,6 +11,10 @@ from scipy.stats import norm
 from torch.utils.data import DataLoader
 
 from models.cnn_attention_models.regression_wrappers import RegressorBenchmarkWrapper
+from utils.train_utils.pipeline_configs import (
+    attach_latest_checkpoints,
+    load_wrappers_from_config,
+)
 from utils.train_utils.dataset import LPBSDataset
 
 
@@ -200,15 +203,12 @@ def benchmark_models(
 
     for model_name, config in models_config.items():
         print(f"Benchmarking {model_name}...")
-        model_cls = config["model_class"]
         params = config.get("params", {})
-        ckpt_path = config.get("checkpoint_path")
         test_loader = DataLoader(
             dataset, batch_size=params.get("batch_size", 16), shuffle=False
         )
 
-        model_wrapper = model_cls(params)
-        model_wrapper.load(ckpt_path)
+        model_wrapper = load_wrappers_from_config({model_name: config})[model_name]
         raw_results = model_wrapper.benchmark(test_loader)
         predictions_list = raw_results.get("predictions")
         variances_list = raw_results.get("variances")  # Handle models without variance
@@ -272,160 +272,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    def get_latest_ckpt(name_pattern):
-        files = glob.glob(f"ckpts/best_{name_pattern}_[0-9][0-9]-[0-9][0-9].pth")
-        if not files:
-            return None
-        return max(files, key=os.path.getctime)
-
     device = "cuda:1"
     models_config = {
-        "bilstm": {
-            "model_class": RegressorBenchmarkWrapper,
-            "params": {
-                "name": "bilstm_1l_64e_12bs_3fel_time",
-                "model_type": "bilstm",
-                "bilstm_layers": 1,
-                "embed_dim": 64,
-                "batch_size": 12,
-                "feature_extractor_layers": 3,
-                "use_time_encoding": True,
-                "loss": "huber",
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "bilstm_gaussian": {
-            "model_class": RegressorBenchmarkWrapper,
-            "params": {
-                "name": "gaussian_1l_64e_12bs_3fel_time",
-                "model_type": "gaussian",
-                "bilstm_layers": 1,
-                "embed_dim": 64,
-                "batch_size": 12,
-                "feature_extractor_layers": 3,
-                "use_time_encoding": True,
-                "loss": "nll",
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "tcn_gaussian": {
-            "model_class": RegressorBenchmarkWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_gaus",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "dropout_1d": False,
-                "dropout": 0.15,
-                "use_time_encoding": True,
-                "loss": "nll",
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "bilstm_weibull": {
-            "model_class": RegressorBenchmarkWrapper,
-            "params": {
-                "name": "gaussian_1l_64e_12bs_3fel_time_weibull",
-                "model_type": "gaussian",
-                "bilstm_layers": 1,
-                "embed_dim": 64,
-                "batch_size": 12,
-                "feature_extractor_layers": 3,
-                "dropout": 0.15,
-                "use_time_encoding": True,
-                "loss": "weibull",
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "tcn_weibull": {
-            "model_class": RegressorBenchmarkWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_weibull",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "use_time_encoding": True,
-                "loss": "weibull",
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "tcn_shifted": {
-            "model_class": RegressorBenchmarkWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_shifted",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "use_time_encoding": True,
-                "loss": "weibull_shifted",
-                "weibull_offset": 10.0,
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "tcn_beta": {
-            "model_class": RegressorBenchmarkWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_beta",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 5,
-                "use_time_encoding": True,
-                "loss": "weibull_beta",
-                "weibull_penalty_weight": 2.0,
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-    }
 
-    for model_name, config in models_config.items():
-        ckpt_path = get_latest_ckpt(config["params"]["name"])
-        if ckpt_path:
-            config["checkpoint_path"] = ckpt_path
-            print(f"Found checkpoint for {model_name}: {ckpt_path}")
-        else:
-            raise FileNotFoundError(
-                f"No checkpoint found for {model_name} with pattern {config['params']['name']}"
-            )
+    }
+    attach_latest_checkpoints(models_config)
 
     results = benchmark_models(
         models_config,

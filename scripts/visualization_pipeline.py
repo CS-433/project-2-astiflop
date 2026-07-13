@@ -1,5 +1,4 @@
 import argparse
-import glob
 import os
 import random
 import sys
@@ -12,9 +11,12 @@ from matplotlib.widgets import Button, Slider
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from models.cnn_attention_models.regression_wrappers import (
-    RegressorVisualizationWrapper,
+from utils.train_utils.pipeline_configs import (
+    attach_latest_checkpoints,
+    load_wrappers_from_config,
 )
+
+from models.cnn_attention_models.regression_wrappers import RegressorVisualizationWrapper
 from utils.train_utils.dataset import LPBSDataset
 
 
@@ -32,22 +34,6 @@ def load_dataset(pytorch_dir, scaler_config_path, scaler_type="standard", device
     )
     return dataset
 
-
-def load_models(models_config):
-    """
-    Initialize and load all models into memory once.
-    """
-    loaded_models = {}
-    for model_name, config in models_config.items():
-        print(f"Loading model {model_name}...")
-        model_cls = config["model_class"]
-        params = config.get("params", {})
-        ckpt_path = config.get("checkpoint_path")
-
-        wrapper = model_cls(params)
-        wrapper.load(ckpt_path)
-        loaded_models[model_name] = wrapper
-    return loaded_models
 
 
 def run_models_inference(dataset, loaded_models, random_idx=None):
@@ -72,7 +58,7 @@ def run_models_inference(dataset, loaded_models, random_idx=None):
         true_remaining.append(float(T_actual - t))
         true_objective.append(min(float(T_actual - t), knee_point))
 
-    for model_name, wrapper in loaded_models.items():
+     for model_name, wrapper in loaded_models.items():
         print(f"Running inference for {model_name}...")
         preds, vars, custom_data = wrapper.get_trajectory_predictions(
             data_tensor, T_actual
@@ -349,163 +335,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    def get_latest_ckpt(name_pattern):
-        files = glob.glob(f"ckpts/best_{name_pattern}_[0-9][0-9]-[0-9][0-9].pth")
-        if not files:
-            return None
-        return max(files, key=os.path.getctime)
-
-    # Determine device
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Define models to visualize
     models_config = {
-        "bilstm": {
-            "model_class": RegressorVisualizationWrapper,
-            "params": {
-                "name": "bilstm_1l_64e_12bs_3fel_time",
-                "model_type": "bilstm",
-                "bilstm_layers": 1,
-                "embed_dim": 64,
-                "batch_size": 12,
-                "feature_extractor_layers": 3,
-                "use_time_encoding": True,
-                "loss": "huber",
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "bilstm_gaussian": {
-            "model_class": RegressorVisualizationWrapper,
-            "params": {
-                "name": "gaussian_1l_64e_12bs_3fel_time",
-                "model_type": "gaussian",
-                "bilstm_layers": 1,
-                "embed_dim": 64,
-                "batch_size": 12,
-                "feature_extractor_layers": 3,
-                "use_time_encoding": True,
-                "loss": "nll",
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "tcn_gaussian": {
-            "model_class": RegressorVisualizationWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_gaus",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "dropout_1d": False,
-                "dropout": 0.15,
-                "use_time_encoding": True,
-                "loss": "nll",
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "bilstm_weibull": {
-            "model_class": RegressorVisualizationWrapper,
-            "params": {
-                "name": "gaussian_1l_64e_12bs_3fel_time_weibull",
-                "model_type": "gaussian",
-                "bilstm_layers": 1,
-                "embed_dim": 64,
-                "batch_size": 12,
-                "feature_extractor_layers": 3,
-                "dropout": 0.15,
-                "use_time_encoding": True,
-                "loss": "weibull",
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "tcn_weibull": {
-            "model_class": RegressorVisualizationWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "use_time_encoding": True,
-                "loss": "weibull",
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "tcn_shifted": {
-            "model_class": RegressorVisualizationWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_shifted",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 3,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "use_time_encoding": True,
-                "loss": "weibull_shifted",
-                "weibull_offset": 10.0,
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-        "tcn_beta": {
-            "model_class": RegressorVisualizationWrapper,
-            "params": {
-                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_beta",
-                "model_type": "tcn",
-                "kernel_size": 5,
-                "num_levels": 5,
-                "dropout": 0.15,
-                "dropout_1d": False,
-                "embed_dim": 64,
-                "batch_size": 16,
-                "feature_extractor_layers": 5,
-                "use_time_encoding": True,
-                "loss": "weibull_beta",
-                "weibull_penalty_weight": 2.0,
-                "lr": 5e-4,
-                "patience": 100,
-                "epochs": 500,
-                "device": device,
-                "segment_len": 900,
-            },
-        },
-    }
 
-    for model_name, config in models_config.items():
-        ckpt_path = get_latest_ckpt(config["params"]["name"])
-        if ckpt_path:
-            config["checkpoint_path"] = ckpt_path
-            print(f"Found checkpoint for {model_name}: {ckpt_path}")
-        else:
-            raise FileNotFoundError(
-                f"No checkpoint found for {model_name} with pattern {config['params']['name']}"
-            )
+    }
+    attach_latest_checkpoints(models_config)
 
     # Adjust paths if executing from project root
     if not os.path.exists(args.scaler_config_path):
@@ -519,14 +353,14 @@ if __name__ == "__main__":
         device=device,
     )
 
-    loaded_models = load_models(models_config)
+    wrappers = load_wrappers_from_config(models_config)
 
     current_sample_idx = args.sample_idx
     while True:
         T_actual, true_objective, true_remaining, data_tensor, results_dict = (
             run_models_inference(
                 dataset=dataset,
-                loaded_models=loaded_models,
+                loaded_models=wrappers,
                 random_idx=current_sample_idx,
             )
         )
