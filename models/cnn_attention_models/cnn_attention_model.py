@@ -6,8 +6,11 @@ from models.building_blocs.bilstm_temporal import BiLSTMTemporal
 from models.building_blocs.cnn_features_extractor import CNNFeatureExtractor
 from models.building_blocs.gated_attention import GatedAttention
 from models.building_blocs.hmm_temporal import HMMTemporal
+from models.building_blocs.mlp_temporal import MLPTemporal
 from models.building_blocs.tcn_temporal import TCNTemporal
 from models.building_blocs.time_embedding import SinusoidalTimeEmbedding
+from models.building_blocs.transformer_temporal import TransformerTemporal
+from models.building_blocs.vanilla_rnn_temporal import VanillaRNNTemporal
 
 
 class CNNAttentionRegressor(nn.Module):
@@ -75,6 +78,25 @@ class CNNAttentionRegressor(nn.Module):
                 dropout_1d=dropout_1d,
             )
             temporal_out_dim = embed_dim
+        elif self.temporal_type == "rnn":
+            num_layers = temporal_params.get("num_layers", 1)
+            self.temporal_model = VanillaRNNTemporal(embed_dim, num_layers=num_layers)
+            temporal_out_dim = embed_dim
+        elif self.temporal_type == "transformer":
+            num_layers = temporal_params.get("num_layers", 1)
+            num_heads = temporal_params.get("num_heads", 4)
+            transformer_dropout = temporal_params.get("dropout", dropout)
+            self.temporal_model = TransformerTemporal(
+                embed_dim,
+                num_layers=num_layers,
+                num_heads=num_heads,
+                dropout=transformer_dropout,
+            )
+            temporal_out_dim = embed_dim
+        elif self.temporal_type == "mlp":
+            mlp_dropout = temporal_params.get("dropout", 0.0)
+            self.temporal_model = MLPTemporal(embed_dim, dropout=mlp_dropout)
+            temporal_out_dim = embed_dim
         else:
             raise ValueError(f"Unknown temporal type: {self.temporal_type}")
 
@@ -82,7 +104,7 @@ class CNNAttentionRegressor(nn.Module):
         self.segment_attention = GatedAttention(
             dim=temporal_out_dim,
             hidden_dim=temporal_out_dim // 4
-            if self.temporal_type in ["bilstm", "tcn"]
+            if self.temporal_type in ["bilstm", "tcn", "rnn", "transformer", "mlp"]
             else temporal_out_dim // 2,
         )
 

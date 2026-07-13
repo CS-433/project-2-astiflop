@@ -1,0 +1,21 @@
+-- dans la visualisation, mettre le vrai temps que ça représente
+-- parler de RUL dans l'intro
+
+
+
+
+I want the presentation to be structured as:
+- title slide
+- group presentation
+- intro: the task 
+- 1 slide on the classification using Terbinafine
+- 1 slide on the preprocessing. It must be clear using the animation how do we go from a video to the data fed to the model
+- 3 slides on the architecture of the model:
+1) feature extraction
+2) attention aggregation
+3) the time modules (bilstm, tcn)
+- 1 slide on the training method (staircases, data augmentation (approche très foundation models), validation split)
+- 1 slide on the benchmark results
+- 1 slide on the visualisation analysis -> slide where we show that the model focus on the segments where the worm don't move much more
+- 1 conclusion slide
+- 1 slide for thanks and questions.

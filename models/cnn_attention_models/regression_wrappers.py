@@ -8,16 +8,11 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 
-from models.cnn_attention_models.cnn_attention_model import CNNAttentionRegressor
+from utils.train_utils.model_factory import (
+    build_regressor,
+    load_regressor_checkpoint,
+)
 from models.wrappers import BenchmarkWrapper, TrainingWrapper, VisualizationWrapper
-
-
-def _resolve_output_type(loss_type):
-    if loss_type == "nll":
-        return "gaussian"
-    if loss_type in ["weibull", "weibull_shifted", "weibull_beta"]:
-        return "weibull"
-    return "point"
 
 
 def _weibull_positive_params(raw_params):
@@ -96,62 +91,8 @@ def gaussian_nll_loss(mu, s, target):
 
 class RegressorBenchmarkWrapper(BenchmarkWrapper):
     def load(self, path):
-        model_type = self.params.get("model_type")
-        embed_dim = self.params.get("embed_dim")
-        segment_len = self.params.get("segment_len")
-        feature_extractor_layers = self.params.get("feature_extractor_layers")
-        use_time_encoding = self.params.get("use_time_encoding")
         device = self.params.get("device")
-        loss_type = self.params.get("loss")
-        dropout = self.params.get("dropout", 0.3)
-
-        output_type = _resolve_output_type(loss_type)
-
-        if model_type == "hmm":
-            temporal_params = {"num_states": self.params.get("num_states")}
-            self.model = CNNAttentionRegressor(
-                segment_len=segment_len,
-                embed_dim=embed_dim,
-                dropout=dropout,
-                feature_extractor_layers=feature_extractor_layers,
-                temporal_type="hmm",
-                temporal_params=temporal_params,
-                use_time_encoding=use_time_encoding,
-                output_type=output_type,
-            ).to(device)
-        elif model_type == "tcn":
-            kernel_size = self.params.get("kernel_size", 3)
-            temporal_params = {
-                "kernel_size": kernel_size,
-                "num_levels": self.params.get("num_levels", 6),
-                "dropout": self.params.get("dropout", 0.3),
-                "dropout_1d": self.params.get("dropout_1d", False),
-            }
-            self.model = CNNAttentionRegressor(
-                segment_len=segment_len,
-                embed_dim=embed_dim,
-                dropout=dropout,
-                feature_extractor_layers=feature_extractor_layers,
-                temporal_type="tcn",
-                temporal_params=temporal_params,
-                use_time_encoding=use_time_encoding,
-                output_type=output_type,
-            ).to(device)
-        else:
-            temporal_params = {"bilstm_layers": self.params.get("bilstm_layers")}
-            self.model = CNNAttentionRegressor(
-                segment_len=segment_len,
-                embed_dim=embed_dim,
-                dropout=dropout,
-                feature_extractor_layers=feature_extractor_layers,
-                temporal_type="bilstm",
-                temporal_params=temporal_params,
-                use_time_encoding=use_time_encoding,
-                output_type=output_type,
-            ).to(device)
-
-        self.model.load_state_dict(torch.load(path, map_location=device))
-        self.model.eval()
+        self.model = load_regressor_checkpoint(self.params, path, device=device)
 
     def benchmark(self, test_loader):
         device = self.params.get(
@@ -331,71 +272,17 @@ class RegressorTrainingWrapper(TrainingWrapper):
         return loss
 
     def train_on_fold(self, training_loader, validation_loader):
-        model_type = self.params.get("model_type")
         name = self.params.get("name")
 
         lr = self.params.get("lr")
         epochs = self.params.get("epochs")
         patience = self.params.get("patience")
         device = self.params.get("device")
-        
+
         loss_type = self.params.get("loss")
-        embed_dim = self.params.get("embed_dim")
-        segment_len = self.params.get("segment_len")
-        feature_extractor_layers = self.params.get("feature_extractor_layers")
-        use_time_encoding = self.params.get("use_time_encoding")
-        dropout = self.params.get("dropout")
         max_segment_number = 150
 
-        # Unified Instantiation
-        output_type = _resolve_output_type(loss_type)
-        if model_type == "hmm":
-            num_states = self.params.get("num_states")
-            temporal_params = {"num_states": num_states}
-            model = CNNAttentionRegressor(
-                segment_len=segment_len,
-                embed_dim=embed_dim,
-                dropout=dropout,
-                feature_extractor_layers=feature_extractor_layers,
-                temporal_type="hmm",
-                temporal_params=temporal_params,
-                use_time_encoding=use_time_encoding,
-                output_type=output_type,
-            ).to(device)
-        elif model_type == "tcn":
-            kernel_size = self.params.get("kernel_size", 3)
-            num_levels = self.params.get("num_levels", 6)
-            tcn_dropout = self.params.get("dropout", 0.3)
-            dropout_1d = self.params.get("dropout_1d", False)
-            temporal_params = {
-                "kernel_size": kernel_size,
-                "num_levels": num_levels,
-                "dropout": tcn_dropout,
-                "dropout_1d": dropout_1d,
-            }
-            model = CNNAttentionRegressor(
-                segment_len=segment_len,
-                embed_dim=embed_dim,
-                dropout=dropout,
-                feature_extractor_layers=feature_extractor_layers,
-                temporal_type="tcn",
-                temporal_params=temporal_params,
-                use_time_encoding=use_time_encoding,
-                output_type=output_type,
-            ).to(device)
-        else:
-            bilstm_layers = self.params.get("bilstm_layers")
-            temporal_params = {"bilstm_layers": bilstm_layers}
-            model = CNNAttentionRegressor(
-                segment_len=segment_len,
-                embed_dim=embed_dim,
-                dropout=dropout,
-                feature_extractor_layers=feature_extractor_layers,
-                temporal_type="bilstm",
-                temporal_params=temporal_params,
-                use_time_encoding=use_time_encoding,
-                output_type=output_type,
-            ).to(device)
+        model = build_regressor(self.params, device=device)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
@@ -500,65 +387,10 @@ class RegressorTrainingWrapper(TrainingWrapper):
 
 class RegressorVisualizationWrapper(VisualizationWrapper):
     def load(self, path):
-        model_type = self.params.get("model_type", "bilstm")
-        embed_dim = self.params.get("embed_dim", 64)
-        segment_len = self.params.get("segment_len", 900)
-        feature_extractor_layers = self.params.get("feature_extractor_layers", 1)
-        use_time_encoding = self.params.get("use_time_encoding", True)
         device = self.params.get(
             "device", "cuda" if torch.cuda.is_available() else "cpu"
         )
-        loss_type = self.params.get("loss", "mse")
-        output_type = _resolve_output_type(loss_type)
-
-        if model_type == "hmm":
-            num_states = self.params.get("num_states", 16)
-            temporal_params = {"num_states": num_states}
-            self.model = CNNAttentionRegressor(
-                segment_len=segment_len,
-                embed_dim=embed_dim,
-                feature_extractor_layers=feature_extractor_layers,
-                temporal_type="hmm",
-                temporal_params=temporal_params,
-                use_time_encoding=use_time_encoding,
-                output_type=output_type,
-            ).to(device)
-        elif model_type == "tcn":
-            kernel_size = self.params.get("kernel_size", 3)
-            num_levels = self.params.get("num_levels", 6)
-            tcn_dropout = self.params.get("dropout", 0.3)
-            dropout_1d = self.params.get("dropout_1d", False)
-            temporal_params = {
-                "kernel_size": kernel_size,
-                "num_levels": num_levels,
-                "dropout": tcn_dropout,
-                "dropout_1d": dropout_1d,
-            }
-            self.model = CNNAttentionRegressor(
-                segment_len=segment_len,
-                embed_dim=embed_dim,
-                feature_extractor_layers=feature_extractor_layers,
-                temporal_type="tcn",
-                temporal_params=temporal_params,
-                use_time_encoding=use_time_encoding,
-                output_type=output_type,
-            ).to(device)
-        else:
-            bilstm_layers = self.params.get("bilstm_layers", 1)
-            temporal_params = {"bilstm_layers": bilstm_layers}
-            self.model = CNNAttentionRegressor(
-                segment_len=segment_len,
-                embed_dim=embed_dim,
-                feature_extractor_layers=feature_extractor_layers,
-                temporal_type="bilstm",
-                temporal_params=temporal_params,
-                use_time_encoding=use_time_encoding,
-                output_type=output_type,
-            ).to(device)
-
-        if path and os.path.exists(path):
-            self.model.load_state_dict(torch.load(path, map_location=device))
-        self.model.eval()
+        self.model = load_regressor_checkpoint(self.params, path, device=device)
 
     def get_trajectory_predictions(self, data_tensor, total_segments):
         device = self.params.get(
