@@ -259,6 +259,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
     - ``patience``
     - ``device``
     - ``batch_size`` 
+    - ``loss_shaping`` ("full", "third_cut", "half_cut")
     """
 
     def _forward_pass(
@@ -267,6 +268,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
         batch_data,
         total_lengths,
         criterion,
+        loss_shaping,
         comparison_criterion,
         device,
         max_segment_number,
@@ -300,12 +302,27 @@ class RegressorTrainingWrapper(TrainingWrapper):
                     indices.append(T_actual)
 
             for t in indices:
-                y = min(
-                    T_actual - t, max_segment_number // 3
-                )  # Reduce difficulty of the task
-                y = (
-                    3 * float(y) / max_segment_number
-                )  # Normalized between 0 and 1 for easier gradients computations
+                if loss_shaping == "third_cut":
+                    y = min(
+                        T_actual - t, max_segment_number // 3
+                    )  # Reduce difficulty of the task
+                    y = (
+                        3 * float(y) / max_segment_number
+                    )  # Normalized between 0 and 1 for easier gradients computations
+                elif loss_shaping == "half_cut":
+                    y = min(
+                        T_actual - t, max_segment_number // 2
+                    )  # Reduce difficulty of the task
+                    y = (
+                        2 * float(y) / max_segment_number
+                    )  # Normalized between 0 and 1 for easier gradients computations
+                else:
+                    y = min(
+                        T_actual - t, max_segment_number
+                    )
+                    y = (
+                        1 * float(y) / max_segment_number
+                    )  # Normalized between 0 and 1 for easier gradients computations
                 X_staircase.append(full_trajectory[:t])
                 Y_staircase.append(y)
 
@@ -375,6 +392,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
         device = self.params.get("device")
 
         loss_type = self.params.get("loss")
+        loss_shaping = self.params.get("loss_shaping", "full")
         max_segment_number = 150
 
         model = build_regressor(self.params, device=device)
@@ -415,6 +433,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
                     batch_data,
                     total_lengths,
                     criterion,
+                    loss_shaping,
                     None,
                     device,
                     max_segment_number=max_segment_number,
@@ -438,6 +457,7 @@ class RegressorTrainingWrapper(TrainingWrapper):
                         X,
                         total_segment_len,
                         criterion,
+                        loss_shaping,
                         comparison_criterion,
                         device,
                         max_segment_number=max_segment_number,
@@ -485,7 +505,7 @@ class RegressorVisualizationWrapper(VisualizationWrapper):
     Step-by-step trajectory visualization for a CNN-attention regressor.
 
     Required ``params``: same model-building keys as ``RegressorBenchmarkWrapper``.
-    /!\ *``loss`` must match the checkpoint's training configuration.* /!\
+    **!WARNING!** *``loss`` must match the checkpoint's training configuration.*
     """
 
     def load(self, path):

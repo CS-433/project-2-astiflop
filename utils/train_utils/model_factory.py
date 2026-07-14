@@ -4,6 +4,7 @@ import torch
 
 from models.simple_regression_models.linear_scalar_regressor import LinearScalarRegressor
 from models.cnn_attention_models.cnn_attention_model import CNNAttentionRegressor
+from models.foundation_models.foundation_regressor import FoundationRegressor
 
 
 def resolve_output_type(loss_type):
@@ -14,27 +15,27 @@ def resolve_output_type(loss_type):
     return "point"
 
 
-def _temporal_params_from_config(model_type, params):
-    if model_type == "hmm":
+def _temporal_params_from_config(temporal_type, params):
+    if temporal_type == "hmm":
         return {"num_states": params["num_states"]}
-    if model_type == "tcn":
+    if temporal_type == "tcn":
         return {
             "kernel_size": params["kernel_size"],
             "num_levels": params["num_levels"],
             "dropout": params["dropout"],
             "dropout_1d": params["dropout_1d"],
         }
-    if model_type == "bilstm":
+    if temporal_type == "bilstm":
         return {"bilstm_layers": params["bilstm_layers"]}
-    if model_type == "rnn":
+    if temporal_type == "rnn":
         return {"num_layers": params["rnn_layers"]}
-    if model_type == "transformer":
+    if temporal_type == "transformer":
         return {
             "num_layers": params["transformer_layers"],
             "num_heads": params["transformer_heads"],
             "dropout": params["dropout"],
         }
-    if model_type == "mlp":
+    if temporal_type == "mlp":
         return {"dropout": params["dropout"]}
     return {}
 
@@ -46,7 +47,7 @@ def build_regressor(params, device=None):
     model_type = params["model_type"]
     embed_dim = params["embed_dim"]
     segment_len = params["segment_len"]
-    feature_extractor_layers = params["feature_extractor_layers"]
+    feature_extractor_layers = params.get("feature_extractor_layers", 1)
     use_time_encoding = params["use_time_encoding"]
     dropout = params["dropout"]
     loss_type = params["loss"]
@@ -59,6 +60,16 @@ def build_regressor(params, device=None):
             feature_extractor_layers=feature_extractor_layers,
             use_time_encoding=use_time_encoding,
             output_type=output_type,
+        )
+    elif model_type == "foundation":
+        model = FoundationRegressor(
+            segment_len=segment_len,
+            embed_dim=embed_dim,
+            dropout=dropout,
+            use_time_encoding=use_time_encoding,
+            output_type=output_type,
+            pretrained_model_name=params.get("pretrained_model_name"),
+            freeze_backbone=params.get("freeze_backbone", True),
         )
     else:
         temporal_params = _temporal_params_from_config(model_type, params)
