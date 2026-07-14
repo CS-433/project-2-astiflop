@@ -8,13 +8,16 @@ import json
 
 import numpy as np
 from scipy.stats import norm
+from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
 from models.cnn_attention_models.regression_wrappers import RegressorBenchmarkWrapper
+from models.simple_regression_models.regression_wrappers import LinearScalarRegressorBenchmarkWrapper
 from utils.train_utils.pipeline_configs import (
     attach_latest_checkpoints,
     load_wrappers_from_config,
 )
+from models.model_dummies import DummyBenchmarkWrapper
 from utils.train_utils.dataset import LPBSDataset
 
 
@@ -161,6 +164,14 @@ def compute_sharpness(preds, targets, variances):
     # MPIW: Mean Prediction Interval Width
     return np.mean(2 * 1.96 * np.sqrt(variances))
 
+def compute_global_r_squared(predictions_list, targets_list):
+    """
+    Compute R² globally over all (worm, step) prediction points.
+    """
+    all_preds = np.concatenate(predictions_list)
+    all_targets = np.concatenate(targets_list)
+    return float(r2_score(all_targets, all_preds))
+
 
 # List of metric functions to apply. Adding a new metric is as simple as adding its function here.
 METRICS_FUNCTIONS = {
@@ -232,6 +243,10 @@ def benchmark_models(
             for metric_name in measures.keys():
                 measures[metric_name] = float(measures[metric_name] / num_samples)
 
+            measures["r_squared"] = compute_global_r_squared(
+                predictions_list, targets_list
+            )
+
         if "interpretability_score" in raw_results:
             measures["Interpretability"] = float(raw_results["interpretability_score"])
 
@@ -274,7 +289,212 @@ if __name__ == "__main__":
 
     device = "cuda:1"
     models_config = {
-
+        "dummy": {
+            "wrapper_class": DummyBenchmarkWrapper,
+            "params": {
+                "name": "dummy_average",
+                "model_type": "segment",
+                "device": device,
+            },
+        },
+        "rnn_scalar": {
+            "wrapper_class": RegressorBenchmarkWrapper,
+            "params": {
+                "name": "rnn_1l_64e_16bs_3fel_time_do-15_mse",
+                "model_type": "rnn",
+                "rnn_layers": 1,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "dropout": 0.15,
+                "loss": "mse",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "bilstm_scalar": {
+            "wrapper_class": RegressorBenchmarkWrapper,
+            "params": {
+                "name": "bilstm_1l_64e_16bs_3fel_time_do-15_mse",
+                "model_type": "bilstm",
+                "bilstm_layers": 1,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "dropout": 0.15,
+                "loss": "mse",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "bilstm_gaussian": {
+            "wrapper_class": RegressorBenchmarkWrapper,
+            "params": {
+                "name": "bilstm_1l_64e_16bs_3fel_time_do-15_nll",
+                "model_type": "bilstm",
+                "bilstm_layers": 1,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "dropout": 0.15,
+                "loss": "nll",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "tcn_weibull": {
+            "wrapper_class": RegressorBenchmarkWrapper,
+            "params": {
+                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15",
+                "model_type": "tcn",
+                "kernel_size": 5,
+                "num_levels": 5,
+                "dropout": 0.15,
+                "dropout_1d": False,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "loss": "weibull",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "tcn_gaussian": {
+            "wrapper_class": RegressorBenchmarkWrapper,
+            "params": {
+                "name": "tcn_5ks_5lvl_64e_16bs_3fel_time_do-15_nll",
+                "model_type": "tcn",
+                "kernel_size": 5,
+                "num_levels": 5,
+                "dropout": 0.15,
+                "dropout_1d": False,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "loss": "nll",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "transformer_scalar_1l": {
+            "wrapper_class": RegressorBenchmarkWrapper,
+            "params": {
+                "name": "trans_1l_4h_64e_16bs_3fel_time_do-15_mse",
+                "model_type": "transformer",
+                "transformer_layers": 1,
+                "transformer_heads": 4,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "dropout": 0.15,
+                "loss": "mse",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "transformer_scalar_2l": {
+            "wrapper_class": RegressorBenchmarkWrapper,
+            "params": {
+                "name": "trans_2l_4h_64e_16bs_3fel_time_do-15_mse",
+                "model_type": "transformer",
+                "transformer_layers": 2,
+                "transformer_heads": 4,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "dropout": 0.15,
+                "loss": "mse",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "transformer_gaussian_1l": {
+            "wrapper_class": RegressorBenchmarkWrapper,
+            "params": {
+                "name": "trans_1l_4h_64e_16bs_3fel_time_do-15_nll",
+                "model_type": "transformer",
+                "transformer_layers": 1,
+                "transformer_heads": 4,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "dropout": 0.15,
+                "loss": "nll",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "transformer_weibull_1l": {
+            "wrapper_class": RegressorBenchmarkWrapper,
+            "params": {
+                "name": "trans_1l_4h_64e_16bs_3fel_time_do-15_weibull",
+                "model_type": "transformer",
+                "transformer_layers": 1,
+                "transformer_heads": 4,
+                "embed_dim": 64,
+                "batch_size": 16,
+                "feature_extractor_layers": 3,
+                "use_time_encoding": True,
+                "dropout": 0.15,
+                "loss": "weibull",
+                "lr": 5e-4,
+                "patience": 100,
+                "epochs": 500,
+                "device": device,
+                "segment_len": 900,
+            },
+        },
+        "linear_scalar_regressor": {
+            "wrapper_class": LinearScalarRegressorBenchmarkWrapper,
+            "params": {
+                "name": "lin_sca_reg_64e_16bs_1fel_time",
+                "model_type": "linear",
+                "embed_dim": 64,
+                "feature_extractor_layers": 1,
+                "use_time_encoding": True,
+                "output_type": "point",
+                "lr": 1e-3,
+                "dropout": 0.0,
+                "loss": "mse",
+                "epochs": 500,
+                "patience": 10,
+                "device": device,
+                "batch_size": 16,
+                "segment_len": 900,
+            },
+        },
     }
     attach_latest_checkpoints(models_config)
 
@@ -293,12 +513,12 @@ if __name__ == "__main__":
 
     print(f"\nSaved benchmark results to {output_json_path}")
 
-    print(f"\nMoving used checkpoints to {args.output_dir}...")
+    print(f"\nCopying used checkpoints to {args.output_dir}...")
     for model_name, config in models_config.items():
         ckpt_path = config.get("checkpoint_path")
         if ckpt_path and os.path.exists(ckpt_path):
-            shutil.move(ckpt_path, args.output_dir)
-            print(f"Moved {ckpt_path}")
+            shutil.copy(ckpt_path, args.output_dir)
+       
 
     # --- Pretty Print ---
     print("\n" + "=" * 80)
