@@ -16,6 +16,8 @@ def get_latest_ckpt(name_pattern, ckpt_dir="ckpts"):
 def attach_latest_checkpoints(models_config, ckpt_dir="ckpts", required=True):
     """Resolve and attach checkpoint paths for benchmark/visualization pipelines."""
     for model_name, config in models_config.items():
+        if "dummy" in model_name:
+            continue
         ckpt_path = get_latest_ckpt(config["params"]["name"], ckpt_dir=ckpt_dir)
         if ckpt_path:
             config["checkpoint_path"] = ckpt_path
@@ -36,8 +38,11 @@ def load_wrappers_from_config(models_config):
         params = config["params"]
         device = params["device"]
         wrapper = config["wrapper_class"](params)
-        wrapper.model = load_regressor_checkpoint(
-            params, config["checkpoint_path"], device=device
-        )
+        if "dummy" not in model_name: 
+            wrapper.model = load_regressor_checkpoint(
+                params, config["checkpoint_path"], device=device
+            )
+        else: 
+            wrapper.load()
         loaded[model_name] = wrapper
     return loaded
