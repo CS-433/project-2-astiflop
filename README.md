@@ -86,23 +86,52 @@ python scripts/extract_features.py
 
 Reads from `preprocessed_data/` and writes per-worm segment summaries to `preprocessed_data_for_classifier/`.
 
+#### Model configs
+
+Model architectures and hyperparameters live in JSON files under [`config/`](config/). Each entry lists the three pipeline wrappers and a shared `params` block:
+
+```json
+{
+  "bilstm_scalar": {
+    "wrappers": {
+      "training": "RegressorTrainingWrapper",
+      "benchmark": "RegressorBenchmarkWrapper",
+      "visualization": "RegressorVisualizationWrapper"
+    },
+    "params": {
+      "name": "super_cool_model_4",
+      "model_type": "bilstm",
+      "device": "cuda:0",
+      "...": "..."
+    }
+  }
+}
+```
+
+- Pipelines take a mandatory `--config` (path or bare name under `config/`, e.g. `plenty_of_models`).
+- Each pipeline selects its own wrapper role (`training`, `benchmark`, or `visualization`). Models missing that role are skipped.
+- Non-checkpoint outputs go to a folder named after the config stem (e.g. `config/plenty_of_models.json` → `plenty_of_models/results.json`). Checkpoints stay in `ckpts/`.
+
+Example configs: [`config/plenty_of_models.json`](config/plenty_of_models.json), [`config/patchtst_bilstm_train.json`](config/patchtst_bilstm_train.json), [`config/viz_tcn_linear.json`](config/viz_tcn_linear.json), [`config/cnn_resnet18.json`](config/cnn_resnet18.json).
+
 #### 1. Lifespan prediction — training
 
 Train regression models with **Group K-Fold** cross-validation (all segments of one worm stay in the same fold):
 
 ```bash
-python scripts/training_pipeline.py --pytorch_dir preprocessed_data/ --scaler standard
+python scripts/training_pipeline.py \
+  --config config/plenty_of_models.json \
+  --pytorch_dir preprocessed_data/ \
+  --scaler standard
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--plot` | Plot average results across folds |
+| `--config` | **Required.** Path or name of the models config JSON |
+| `--plot` | Plot average results across folds (saved under the config output folder) |
 | `--augment_data` / `-a [N]` | Apply trajectory augmentations (default `5` if flag given without value) |
 | `--prod` | Save the best checkpoint per model to `ckpts/` |
 | `--scaler` / `-s` | `none`, `minmax`, or `standard` (writes `scaler_config.json` when not `none`) |
-| `--output_json` / `-o` | Basename for the results JSON (default: `avg_results`) |
-
-Edit the `models_config` dict inside the script to choose architectures (TCN, Gaussian/Weibull heads) and hyperparameters.
 
 #### 2. Lifespan prediction — benchmarking
 
@@ -110,12 +139,12 @@ Evaluate saved checkpoints on a held-out set with survival-oriented metrics (MAE
 
 ```bash
 python scripts/benchmark_pipeline.py \
+  --config config/plenty_of_models.json \
   --pytorch_dir preprocessed_data/ \
-  --scaler_config_path preprocessed_data/scaler_config.json \
-  --output_dir benchmark_results/
+  --scaler_config_path preprocessed_data/scaler_config.json
 ```
 
-Checkpoints are expected under `ckpts/best_<model_name>_*.pth`.
+Checkpoints are expected under `ckpts/best_<model_name>_*.pth`. Results are written to `<config_stem>/results.json`.
 
 #### 3. Lifespan prediction — interactive visualization
 
@@ -123,6 +152,7 @@ Compare model predictions on individual worm trajectories:
 
 ```bash
 python scripts/visualization_pipeline.py \
+  --config config/viz_tcn_linear.json \
   --pytorch_dir preprocessed_data/ \
   --scaler_config_path preprocessed_data/scaler_config.json
 ```
@@ -132,15 +162,25 @@ python scripts/visualization_pipeline.py \
 Train image-based classifiers (ResNet, DenseNet) on multichannel trajectory images:
 
 ```bash
-python scripts/cnn_pipeline.py --data_dir cnn_dataset/
+python scripts/cnn_pipeline.py \
+  --config config/cnn_resnet18.json \
+  --data_dir cnn_dataset/
 ```
 
-Modify the `models_config` dict in the script to change architectures, batch size, or learning rate.
+CNN configs list per-model hyperparameters (architecture, batch size, LR, epochs) without wrappers. Plots and `results.json` land in the config-named output folder.
 
-#### 5. Plotting results
+#### 5. Train + benchmark helper
+
+[`run_pipeline.sh`](run_pipeline.sh) runs training then benchmarking with the same config:
 
 ```bash
-python scripts/plot_results.py --results_file avg_results.json
+./run_pipeline.sh --config config/plenty_of_models.json
+```
+
+#### 6. Plotting results
+
+```bash
+python scripts/plot_results.py --results_file plenty_of_models/results.json
 ```
 
 ---
@@ -158,7 +198,7 @@ The project is organized around two modeling tracks that share the same preproce
 | [`scripts/visualization_pipeline.py`](scripts/visualization_pipeline.py) | Interactive per-worm prediction plots |
 | [`scripts/plot_regression_interpretation.py`](scripts/plot_regression_interpretation.py) | Attention / interpretability plots for regression models |
 
-**Models** live in [`models/cnn_attention_models/`](models/cnn_attention_models/) and compose reusable blocks from [`models/building_blocs/`](models/building_blocs/) (CNN feature extractor, TCN, BiLSTM, gated attention, time embedding). Wrappers in [`models/cnn_attention_models/regression_wrappers.py`](models/cnn_attention_models/regression_wrappers.py) handle training, benchmarking, and visualization.
+**Models** live in [`models/cnn_attention_models/`](models/cnn_attention_models/) and compose reusable blocks from [`models/building_blocs/`](models/building_blocs/) (CNN feature extractor, TCN, BiLSTM, gated attention, time embedding). Wrappers in [`models/cnn_attention_models/regression_wrappers.py`](models/cnn_attention_models/regression_wrappers.py) handle training, benchmarking, and visualization. Which wrapper runs for a given experiment is chosen from the JSON config via [`utils/train_utils/pipeline_configs.py`](utils/train_utils/pipeline_configs.py).
 
 **Loss functions** include Huber, Gaussian NLL, and Weibull survival variants (standard, shifted, beta-penalized) for uncertainty-aware remaining-lifespan estimates.
 
@@ -183,6 +223,7 @@ CNN classifiers use [`CElegansCNNDataset`](utils/train_utils/dataset.py) and leg
 
 ```
 .
+├── config/                            # Experiment JSON configs (models + wrappers + params)
 ├── data/                              # Raw tracking CSVs, lifespan summary, config
 │   ├── config.json
 │   ├── lifespan_summary.csv
@@ -191,9 +232,12 @@ CNN classifiers use [`CElegansCNNDataset`](utils/train_utils/dataset.py) and leg
 ├── preprocessed_data_for_classifier/  # Segment-level tabular features (gitignored)
 ├── cnn_dataset/                       # Multichannel trajectory images (gitignored)
 ├── ckpts/                             # Saved model checkpoints (gitignored)
+├── <config_stem>/                     # Pipeline outputs for that config (results, plots)
 ├── models/
 │   ├── building_blocs/                # TCN, BiLSTM, CNN extractor, attention, HMM, …
 │   ├── cnn_attention_models/          # Regression model + training/benchmark wrappers
+│   ├── foundation_models/             # PatchTST / foundation regressor wrappers
+│   ├── simple_regression_models/      # Linear scalar regressor wrappers
 │   ├── deprecated/                    # Legacy classification models (LR, RF, ROCKET, CNN, …)
 │   ├── model_dummies.py
 │   └── wrappers.py                    # Base training / benchmark / visualization wrappers
@@ -208,10 +252,13 @@ CNN classifiers use [`CElegansCNNDataset`](utils/train_utils/dataset.py) and leg
 │   └── plot_regression_interpretation.py
 ├── utils/
 │   ├── train_utils/
-│   │   └── dataset.py                 # LPBSDataset, CElegansCNNDataset
+│   │   ├── dataset.py                 # LPBSDataset, CElegansCNNDataset
+│   │   ├── pipeline_configs.py        # Load JSON configs, resolve wrappers, find checkpoints
+│   │   └── model_factory.py
 │   └── plot_utils/                    # Result presentation and plotting helpers
 ├── notebook/                          # Exploratory visualization notebooks
 ├── data_analysis/                     # Statistical analysis scripts and notebooks
+├── run_pipeline.sh                    # Train then benchmark with one config
 ├── .env                               # Feature column configuration
 └── requirements.txt
 ```
@@ -319,9 +366,12 @@ This ensures reported metrics reflect generalization to **unseen worms**.
 
 | File | Purpose |
 |------|---------|
+| [`config/`](config/) | Experiment configs (wrappers + hyperparameters); pipelines take `--config` |
 | [`scripts/preprocess.py`](scripts/preprocess.py) | Trajectory cleaning, segmentation, feature computation, CNN image generation |
 | [`scripts/training_pipeline.py`](scripts/training_pipeline.py) | Lifespan regression training orchestrator |
 | [`scripts/benchmark_pipeline.py`](scripts/benchmark_pipeline.py) | Regression evaluation with survival metrics |
 | [`scripts/cnn_pipeline.py`](scripts/cnn_pipeline.py) | CNN classification orchestrator |
+| [`utils/train_utils/pipeline_configs.py`](utils/train_utils/pipeline_configs.py) | Resolve config paths, select role wrappers, attach checkpoints |
 | [`utils/train_utils/dataset.py`](utils/train_utils/dataset.py) | `LPBSDataset` and `CElegansCNNDataset` data loaders |
 | [`models/cnn_attention_models/`](models/cnn_attention_models/) | Regression model architecture and wrappers |
+| [`run_pipeline.sh`](run_pipeline.sh) | Helper to run training then benchmarking with one config |

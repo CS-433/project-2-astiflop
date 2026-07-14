@@ -32,7 +32,7 @@ def save_results_to_json(results, filename="results.json"):
     print(f"Results saved to {filename}")
 
 
-def plot_results(avg_results):
+def plot_results(avg_results, save_path="model_performance.png"):
     # Sort model names by first metric in descending order
     model_names = sorted(list(avg_results.keys()), key=lambda x: list(avg_results[x].values())[0], reverse=True)
 
@@ -64,8 +64,8 @@ def plot_results(avg_results):
     ax.legend()
 
     fig.tight_layout()
-    plt.savefig("model_performance.png")
-    print("Plot saved to model_performance.png")
+    plt.savefig(save_path)
+    print(f"Plot saved to {save_path}")
     plt.close()
 
 def plot_cnn_comparison(results_summary, save_path="cnn_model_comparison.png"):

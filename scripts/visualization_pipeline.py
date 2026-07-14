@@ -13,10 +13,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils.train_utils.pipeline_configs import (
     attach_latest_checkpoints,
+    load_models_config,
     load_wrappers_from_config,
+    resolve_config_path,
 )
 
-from models.cnn_attention_models.regression_wrappers import RegressorVisualizationWrapper
 from utils.train_utils.dataset import LPBSDataset
 
 
@@ -58,7 +59,7 @@ def run_models_inference(dataset, loaded_models, random_idx=None):
         true_remaining.append(float(T_actual - t))
         true_objective.append(min(float(T_actual - t), knee_point))
 
-     for model_name, wrapper in loaded_models.items():
+    for model_name, wrapper in loaded_models.items():
         print(f"Running inference for {model_name}...")
         preds, vars, custom_data = wrapper.get_trajectory_predictions(
             data_tensor, T_actual
@@ -307,6 +308,13 @@ if __name__ == "__main__":
         description="Interactive visualization pipeline for multiple models."
     )
     parser.add_argument(
+        "--config",
+        "-c",
+        required=True,
+        type=str,
+        help="Path or name of the models config JSON (under config/)",
+    )
+    parser.add_argument(
         "--pytorch_dir",
         "-d",
         type=str,
@@ -315,7 +323,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--scaler_config_path",
-        "-c",
+        "-sc",
         type=str,
         default="preprocessed_with_lifespan/scaler_config.json",
         help="Path to the scaler config JSON file",
@@ -335,11 +343,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    models_config = {
-
-    }
+    config_path = resolve_config_path(args.config)
+    models_config = load_models_config(config_path, role="visualization")
     attach_latest_checkpoints(models_config)
+
+    first_params = next(iter(models_config.values()))["params"]
+    device = first_params["device"]
 
     # Adjust paths if executing from project root
     if not os.path.exists(args.scaler_config_path):

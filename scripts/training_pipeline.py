@@ -12,9 +12,11 @@ from utils.plot_utils.presents_results import (
     save_results_to_json,
 )
 from utils.train_utils.dataset import LPBSDataset
-
-from models.cnn_attention_models.regression_wrappers import RegressorTrainingWrapper
-from models.simple_regression_models.regression_wrappers import LinearScalarRegressorWrapper
+from utils.train_utils.pipeline_configs import (
+    get_output_dir_from_config,
+    load_models_config,
+    resolve_config_path,
+)
 
 
 def train_models(
@@ -81,6 +83,13 @@ def train_models(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train and evaluate models.")
     parser.add_argument(
+        "--config",
+        "-c",
+        required=True,
+        type=str,
+        help="Path or name of the models config JSON (under config/)",
+    )
+    parser.add_argument(
         "--plot",
         action="store_true",
         help="Plot average results",
@@ -102,13 +111,6 @@ if __name__ == "__main__":
         help="Use augmented data for training. If specified without value, defaults to 5.",
     )
     parser.add_argument(
-        "--output_json",
-        "-o",
-        type=str,
-        default="avg_results",
-        help="Output JSON file for average results",
-    )
-    parser.add_argument(
         "--prod", action="store_true", help="Run in production mode (save best model)"
     )
     parser.add_argument(
@@ -120,60 +122,17 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    device = "cuda"
-    models_config = {
-        # "linear_scalar_regressor": {
-        #     "wrapper_class": LinearScalarRegressorWrapper,
-        #     "params": {
-        #         "model_type": "linear",
-        #         "embed_dim": 64,
-        #         "feature_extractor_layers": 1,
-        #         "use_time_encoding": True,
-        #         "output_type": "point",
-        #         "device": device,
-        #     },
-        # },
-        "linear_scalar_regressor": {
-            "wrapper_class": LinearScalarRegressorWrapper,
-            "params": {
-                "name": "lin_sca_reg_16_1_time",
-
-                "model_type": "linear",
-                "embed_dim": 16,
-                "feature_extractor_layers": 1,
-                "use_time_encoding": True,
-                "output_type": "point",
-
-                "lr": 0.001,
-                "dropout": 0.0,
-                "loss": "mse",
-                "epochs": 500,
-                "patience": 10,
-
-                "device": device,
-                "batch_size": 32,
-                "segment_len": 900,
-            },
-        },
-        # "linear_scalar_regressor": {
-        #     "wrapper_class": LinearScalarRegressorWrapper,
-        #     "params": {
-        #         "model_type": "linear",
-        #         "embed_dim": 32,
-        #         "feature_extractor_layers": 3,
-        #         "use_time_encoding": True,
-        #         "output_type": "point",
-        #         "device": device,
-        #     },
-        # },
-    }
+    config_path = resolve_config_path(args.config)
+    models_config = load_models_config(config_path, role="training")
+    output_dir = get_output_dir_from_config(config_path)
+    os.makedirs(output_dir, exist_ok=True)
 
     results = train_models(
         models_config,
         pytorch_dir=args.pytorch_dir,
         augment_data=args.augment_data,
         scaler=args.scaler,
-        n_splits=5,
+        n_splits=2,
     )
 
     # Calculate average results
@@ -181,8 +140,9 @@ if __name__ == "__main__":
     print(f"Average Results: {avg_results}")
 
     # Save results to JSON
-    save_results_to_json(avg_results, f"{args.output_json}.json")
+    results_path = os.path.join(output_dir, "results.json")
+    save_results_to_json(avg_results, results_path)
 
     # Plot results if requested
     if args.plot:
-        plot_results(avg_results)
+        plot_results(avg_results, save_path=os.path.join(output_dir, "model_performance.png"))
