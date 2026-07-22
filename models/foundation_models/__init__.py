@@ -1,1 +1,2 @@
+from models.foundation_models.chronos_rul_regressor import ChronosRULRegressor
 from models.foundation_models.foundation_regressor import FoundationRegressor

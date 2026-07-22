@@ -23,6 +23,9 @@ def _build_wrapper_registry():
         RegressorVisualizationWrapper,
     )
     from models.foundation_models.regression_wrappers import (
+        ChronosRULRegressorBenchmarkWrapper,
+        ChronosRULRegressorTrainingWrapper,
+        ChronosRULRegressorVisualizationWrapper,
         FoundationRegressorBenchmarkWrapper,
         FoundationRegressorTrainingWrapper,
         FoundationRegressorVisualizationWrapper,
@@ -42,6 +45,9 @@ def _build_wrapper_registry():
         "FoundationRegressorTrainingWrapper": FoundationRegressorTrainingWrapper,
         "FoundationRegressorBenchmarkWrapper": FoundationRegressorBenchmarkWrapper,
         "FoundationRegressorVisualizationWrapper": FoundationRegressorVisualizationWrapper,
+        "ChronosRULRegressorTrainingWrapper": ChronosRULRegressorTrainingWrapper,
+        "ChronosRULRegressorBenchmarkWrapper": ChronosRULRegressorBenchmarkWrapper,
+        "ChronosRULRegressorVisualizationWrapper": ChronosRULRegressorVisualizationWrapper,
         "LinearScalarRegressorWrapper": LinearScalarRegressorWrapper,
         "LinearScalarRegressorTrainingWrapper": LinearScalarRegressorTrainingWrapper,
         "LinearScalarRegressorBenchmarkWrapper": LinearScalarRegressorBenchmarkWrapper,

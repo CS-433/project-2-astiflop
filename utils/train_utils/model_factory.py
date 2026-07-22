@@ -4,6 +4,7 @@ import torch
 
 from models.simple_regression_models.linear_scalar_regressor import LinearScalarRegressor
 from models.cnn_attention_models.cnn_attention_model import CNNAttentionRegressor
+from models.foundation_models.chronos_rul_regressor import ChronosRULRegressor
 from models.foundation_models.foundation_regressor import FoundationRegressor
 
 
@@ -70,6 +71,19 @@ def build_regressor(params, device=None):
             output_type=output_type,
             pretrained_model_name=params.get("pretrained_model_name"),
             freeze_backbone=params.get("freeze_backbone", True),
+        )
+    elif model_type == "chronos":
+        model = ChronosRULRegressor(
+            segment_len=segment_len,
+            embed_dim=embed_dim,
+            dropout=dropout,
+            use_time_encoding=use_time_encoding,
+            output_type=output_type,
+            pretrained_model_name=params.get("pretrained_model_name"),
+            freeze_backbone=params.get("freeze_backbone", True),
+            context_len=params.get("context_len", 80),
+            pooling=params.get("pooling", "reg"),
+            device=device,
         )
     else:
         temporal_params = _temporal_params_from_config(model_type, params)

@@ -90,13 +90,10 @@ def plot_interactive_results(
 
     # Determine bounds
     max_predicted_total = 0
-    y_max_val = np.max(true_remaining) * 1.1
+    y_max_val = 1.5 * T_actual
     for m_res in results_dict.values():
         preds = m_res["predictions"]
-        vars_ = m_res["variances"]
-        stds = np.sqrt(np.maximum(0, vars_))
         max_predicted_total = max(max_predicted_total, np.max(steps + preds))
-        y_max_val = max(y_max_val, np.max(preds + stds) * 1.1)
 
     max_true_total = np.max(steps + true_remaining)
     plot1_xlim = max(1.5 * T_actual, max_predicted_total, max_true_total)

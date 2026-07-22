@@ -12,3 +12,5 @@ xgboost
 joblib
 seaborn
 ipykernel
+transformers
+chronos-forecasting
