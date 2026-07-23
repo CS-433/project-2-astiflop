@@ -37,6 +37,11 @@ def _build_wrapper_registry():
         LinearScalarRegressorVisualizationWrapper,
         LinearScalarRegressorWrapper,
     )
+    from models.transformer_models.regression_wrappers import (
+        TransformerRegressorBenchmarkWrapper,
+        TransformerRegressorTrainingWrapper,
+        TransformerRegressorVisualizationWrapper,
+    )
 
     WRAPPER_REGISTRY = {
         "RegressorTrainingWrapper": RegressorTrainingWrapper,
@@ -52,6 +57,9 @@ def _build_wrapper_registry():
         "LinearScalarRegressorTrainingWrapper": LinearScalarRegressorTrainingWrapper,
         "LinearScalarRegressorBenchmarkWrapper": LinearScalarRegressorBenchmarkWrapper,
         "LinearScalarRegressorVisualizationWrapper": LinearScalarRegressorVisualizationWrapper,
+        "TransformerRegressorTrainingWrapper": TransformerRegressorTrainingWrapper,
+        "TransformerRegressorBenchmarkWrapper": TransformerRegressorBenchmarkWrapper,
+        "TransformerRegressorVisualizationWrapper": TransformerRegressorVisualizationWrapper,
         "DummyBenchmarkWrapper": DummyBenchmarkWrapper,
         "DummyVisualizationWrapper": DummyVisualizationWrapper,
     }
@@ -194,6 +202,7 @@ def get_latest_ckpt(name_pattern, ckpt_dir="ckpts"):
 
 def attach_latest_checkpoints(models_config, ckpt_dir="ckpts", required=True):
     """Resolve and attach checkpoint paths for benchmark/visualization pipelines."""
+    to_remove = []
     for model_name, config in models_config.items():
         if "dummy" in model_name:
             continue
@@ -206,6 +215,13 @@ def attach_latest_checkpoints(models_config, ckpt_dir="ckpts", required=True):
                 f"No checkpoint found for {model_name} "
                 f"with pattern {config['params']['name']}"
             )
+        else:
+            print(f"No checkpoint found for {model_name} "
+                f"with pattern {config['params']['name']}. Ignored.")
+            to_remove.append(model_name)
+            
+    for model_name in to_remove:
+        del models_config[model_name]
     return models_config
 
 

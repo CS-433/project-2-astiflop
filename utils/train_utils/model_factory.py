@@ -6,6 +6,7 @@ from models.simple_regression_models.linear_scalar_regressor import LinearScalar
 from models.cnn_attention_models.cnn_attention_model import CNNAttentionRegressor
 from models.foundation_models.chronos_rul_regressor import ChronosRULRegressor
 from models.foundation_models.foundation_regressor import FoundationRegressor
+from models.transformer_models.transformer_regressor import TransformerRegressor
 
 
 def resolve_output_type(loss_type):
@@ -84,6 +85,18 @@ def build_regressor(params, device=None):
             context_len=params.get("context_len", 80),
             pooling=params.get("pooling", "reg"),
             device=device,
+        )
+    elif model_type == "transformer_regressor":
+        model = TransformerRegressor(
+            segment_len=segment_len,
+            embed_dim=embed_dim,
+            dropout=dropout,
+            encoder_type=params.get("encoder_type", "cnn"),
+            feature_extractor_layers=feature_extractor_layers,
+            transformer_layers=params["transformer_layers"],
+            transformer_heads=params["transformer_heads"],
+            use_time_encoding=use_time_encoding,
+            output_type=output_type,
         )
     else:
         temporal_params = _temporal_params_from_config(model_type, params)

@@ -342,7 +342,7 @@ if __name__ == "__main__":
 
     config_path = resolve_config_path(args.config)
     models_config = load_models_config(config_path, role="visualization")
-    attach_latest_checkpoints(models_config)
+    attach_latest_checkpoints(models_config, required=False)
 
     first_params = next(iter(models_config.values()))["params"]
     device = first_params["device"]
