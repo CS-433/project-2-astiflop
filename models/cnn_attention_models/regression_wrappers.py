@@ -316,13 +316,16 @@ class RegressorTrainingWrapper(TrainingWrapper):
                     y = (
                         2 * float(y) / max_segment_number
                     )  # Normalized between 0 and 1 for easier gradients computations
-                else:
+                elif loss_shaping == "full":
                     y = min(
                         T_actual - t, max_segment_number
                     )
                     y = (
                         1 * float(y) / max_segment_number
                     )  # Normalized between 0 and 1 for easier gradients computations
+                elif loss_shaping == "residual_learning":
+                    y = 80 - t
+                    y = y/(max_segment_number - 80)
                 X_staircase.append(full_trajectory[:t])
                 Y_staircase.append(y)
 

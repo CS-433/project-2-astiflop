@@ -4,8 +4,12 @@ import torch
 
 from models.simple_regression_models.linear_scalar_regressor import LinearScalarRegressor
 from models.cnn_attention_models.cnn_attention_model import CNNAttentionRegressor
+from models.esn_models.esn_regressor import ESNRegressor
 from models.foundation_models.chronos_rul_regressor import ChronosRULRegressor
 from models.foundation_models.foundation_regressor import FoundationRegressor
+from models.foundation_training_models.foundation_training_regressor import (
+    FoundationTrainingRegressor,
+)
 from models.transformer_models.transformer_regressor import TransformerRegressor
 
 
@@ -52,7 +56,7 @@ def build_regressor(params, device=None):
     feature_extractor_layers = params.get("feature_extractor_layers", 1)
     use_time_encoding = params["use_time_encoding"]
     dropout = params["dropout"]
-    loss_type = params["loss"]
+    loss_type = params.get("loss", "mse")
     output_type = resolve_output_type(loss_type)
 
     if model_type == "linear":
@@ -97,6 +101,41 @@ def build_regressor(params, device=None):
             transformer_heads=params["transformer_heads"],
             use_time_encoding=use_time_encoding,
             output_type=output_type,
+        )
+    elif model_type == "foundation_training":
+        compute_type = params["compute_type"]
+        temporal_params = _temporal_params_from_config(compute_type, params)
+        model = FoundationTrainingRegressor(
+            segment_len=segment_len,
+            embed_dim=embed_dim,
+            dropout=dropout,
+            embedder_type=params["embedder_type"],
+            compute_type=compute_type,
+            temporal_params=temporal_params,
+            use_time_encoding=use_time_encoding,
+            output_type=output_type,
+            freeze_embedder=params.get("freeze_embedder", False),
+            causal_kernel_size=params.get("causal_kernel_size", 7),
+        )
+    elif model_type == "esn":
+        model = ESNRegressor(
+            segment_len=segment_len,
+            feature_extractor=params.get("feature_extractor", "raw"),
+            units=params.get("units", 500),
+            embed_dim=embed_dim,
+            feature_extractor_layers=feature_extractor_layers,
+            use_time_encoding=use_time_encoding,
+            dropout=dropout,
+            output_type="point",
+            leak_rate=params.get("leak_rate", 0.3),
+            spectral_radius=params.get("spectral_radius", 0.9),
+            input_scaling=params.get("input_scaling", 1.0),
+            input_connectivity=params.get("input_connectivity", 0.1),
+            rc_connectivity=params.get("rc_connectivity", 0.1),
+            reservoir_seed=params.get("reservoir_seed", 0),
+            rocket_num_kernels=params.get("rocket_num_kernels", 1000),
+            num_variates=params.get("num_variates", 3),
+            ridge=params.get("ridge", 1e-5),
         )
     else:
         temporal_params = _temporal_params_from_config(model_type, params)

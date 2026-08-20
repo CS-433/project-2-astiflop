@@ -3,8 +3,6 @@ import json
 import os
 from pathlib import Path
 
-from utils.train_utils.model_factory import load_regressor_checkpoint
-
 
 WRAPPER_REGISTRY = None
 
@@ -22,6 +20,11 @@ def _build_wrapper_registry():
         RegressorTrainingWrapper,
         RegressorVisualizationWrapper,
     )
+    from models.esn_models.regression_wrappers import (
+        ESNBenchmarkWrapper,
+        ESNTrainingWrapper,
+        ESNVisualizationWrapper,
+    )
     from models.foundation_models.regression_wrappers import (
         ChronosRULRegressorBenchmarkWrapper,
         ChronosRULRegressorTrainingWrapper,
@@ -29,6 +32,11 @@ def _build_wrapper_registry():
         FoundationRegressorBenchmarkWrapper,
         FoundationRegressorTrainingWrapper,
         FoundationRegressorVisualizationWrapper,
+    )
+    from models.foundation_training_models.regression_wrappers import (
+        FoundationTrainingBenchmarkWrapper,
+        FoundationTrainingTrainingWrapper,
+        FoundationTrainingVisualizationWrapper,
     )
     from models.model_dummies import DummyBenchmarkWrapper, DummyVisualizationWrapper
     from models.simple_regression_models.regression_wrappers import (
@@ -47,12 +55,18 @@ def _build_wrapper_registry():
         "RegressorTrainingWrapper": RegressorTrainingWrapper,
         "RegressorBenchmarkWrapper": RegressorBenchmarkWrapper,
         "RegressorVisualizationWrapper": RegressorVisualizationWrapper,
+        "ESNTrainingWrapper": ESNTrainingWrapper,
+        "ESNBenchmarkWrapper": ESNBenchmarkWrapper,
+        "ESNVisualizationWrapper": ESNVisualizationWrapper,
         "FoundationRegressorTrainingWrapper": FoundationRegressorTrainingWrapper,
         "FoundationRegressorBenchmarkWrapper": FoundationRegressorBenchmarkWrapper,
         "FoundationRegressorVisualizationWrapper": FoundationRegressorVisualizationWrapper,
         "ChronosRULRegressorTrainingWrapper": ChronosRULRegressorTrainingWrapper,
         "ChronosRULRegressorBenchmarkWrapper": ChronosRULRegressorBenchmarkWrapper,
         "ChronosRULRegressorVisualizationWrapper": ChronosRULRegressorVisualizationWrapper,
+        "FoundationTrainingTrainingWrapper": FoundationTrainingTrainingWrapper,
+        "FoundationTrainingBenchmarkWrapper": FoundationTrainingBenchmarkWrapper,
+        "FoundationTrainingVisualizationWrapper": FoundationTrainingVisualizationWrapper,
         "LinearScalarRegressorWrapper": LinearScalarRegressorWrapper,
         "LinearScalarRegressorTrainingWrapper": LinearScalarRegressorTrainingWrapper,
         "LinearScalarRegressorBenchmarkWrapper": LinearScalarRegressorBenchmarkWrapper,
@@ -226,17 +240,14 @@ def attach_latest_checkpoints(models_config, ckpt_dir="ckpts", required=True):
 
 
 def load_wrappers_from_config(models_config):
-    """Instantiate wrappers and load model weights via the model factory."""
+    """Instantiate wrappers and load model weights via each wrapper's ``load``."""
     loaded = {}
     for model_name, config in models_config.items():
         print(f"Loading model {model_name}...")
         params = config["params"]
-        device = params["device"]
         wrapper = config["wrapper_class"](params)
         if "dummy" not in model_name:
-            wrapper.model = load_regressor_checkpoint(
-                params, config["checkpoint_path"], device=device
-            )
+            wrapper.load(config["checkpoint_path"])
         else:
             wrapper.load()
         loaded[model_name] = wrapper
